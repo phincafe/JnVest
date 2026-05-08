@@ -2,8 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { ExternalLink, ListPlus, RefreshCcw, Trash2 } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type {
+  SnapTradeAccount,
   SnapTradeAuthorization,
   SnapTradeHoldings,
+  SnapTradeOption,
+  SnapTradeOrder,
+  SnapTradeStock,
 } from "../api/types";
 import { changeClass, fmtPct, fmtPrice } from "../lib/format";
 import { Skeleton } from "./Skeleton";
@@ -166,18 +170,22 @@ export function SnapTradePanel({ refreshNonce }: { refreshNonce: number }) {
             <>
               <ConnectionList auths={auths} onDisconnect={disconnect} busy={busy} />
               {holdings && <TotalsCard totals={holdings.totals} />}
-              {holdings && holdings.accounts.length > 0 && (
-                <AccountsCard accounts={holdings.accounts} />
-              )}
-              {holdings && (
-                <PositionsTable positions={holdings.positions} />
-              )}
-              {holdings && holdings.options.length > 0 && (
-                <OptionsTable options={holdings.options} />
-              )}
-              {holdings && holdings.orders.length > 0 && (
-                <RecentOrdersTable orders={holdings.orders} />
-              )}
+              {holdings &&
+                holdings.accounts.map((acct) => (
+                  <AccountSection
+                    key={acct.id}
+                    account={acct}
+                    positions={holdings.positions.filter(
+                      (p) => p.account_id === acct.id,
+                    )}
+                    options={holdings.options.filter(
+                      (o) => o.account_id === acct.id,
+                    )}
+                    orders={holdings.orders.filter(
+                      (o) => o.account_id === acct.id,
+                    )}
+                  />
+                ))}
             </>
           )}
         </>
@@ -268,53 +276,78 @@ function TotalsCard({ totals }: { totals: SnapTradeHoldings["totals"] }) {
   );
 }
 
-function AccountsCard({
-  accounts,
+function AccountSection({
+  account,
+  positions,
+  options,
+  orders,
 }: {
-  accounts: SnapTradeHoldings["accounts"];
+  account: SnapTradeAccount;
+  positions: SnapTradeStock[];
+  options: SnapTradeOption[];
+  orders: SnapTradeOrder[];
 }) {
+  const acctCost =
+    positions.reduce((s, p) => s + (p.avg_cost ? p.quantity * p.avg_cost : 0), 0) +
+    options.reduce(
+      (s, o) => s + (o.avg_cost ? o.quantity * (o.avg_cost ?? 0) * 100 : 0),
+      0,
+    );
+  const acctValue =
+    positions.reduce((s, p) => s + p.market_value, 0) +
+    options.reduce((s, o) => s + o.market_value, 0);
+  const acctPL = acctCost ? acctValue - acctCost : 0;
+  const acctPLPct = acctCost ? (acctPL / acctCost) * 100 : null;
+
   return (
-    <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
-      <h3 className="mb-2 text-xs uppercase tracking-wide text-(--color-text-dim)">
-        Accounts
-      </h3>
-      <ul className="space-y-1 text-sm">
-        {accounts.map((a) => (
-          <li key={a.id} className="flex items-center justify-between">
-            <span>
-              <span className="font-medium">{a.name}</span>{" "}
-              <span className="text-xs text-(--color-text-dim)">
-                {a.broker}
-                {a.type ? ` · ${a.type}` : ""}
-              </span>
+    <div className="rounded-xl border border-(--color-border) bg-(--color-panel)">
+      <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-(--color-border) px-4 py-3">
+        <div>
+          <div className="text-base font-semibold">{account.name}</div>
+          <div className="text-xs text-(--color-text-dim)">
+            {account.broker}
+            {account.type ? ` · ${account.type}` : ""}
+          </div>
+        </div>
+        <div className="flex items-baseline gap-4 text-sm tabular-nums">
+          <span className="text-(--color-text-dim)">
+            Equity <span className="text-(--color-text)">${fmtPrice(account.balance)}</span>
+          </span>
+          <span className="text-(--color-text-dim)">
+            Cash <span className="text-(--color-text)">${fmtPrice(account.cash)}</span>
+          </span>
+          {acctCost > 0 && (
+            <span className={`font-medium ${changeClass(acctPL)}`}>
+              {acctPL >= 0 ? "+" : "-"}${fmtPrice(Math.abs(acctPL))}
+              {acctPLPct != null && ` (${fmtPct(acctPLPct)})`}
             </span>
-            <span className="text-xs tabular-nums text-(--color-text-dim)">
-              ${fmtPrice(a.balance)} (cash ${fmtPrice(a.cash)})
-            </span>
-          </li>
-        ))}
-      </ul>
+          )}
+        </div>
+      </header>
+
+      <div className="space-y-4 p-4">
+        {positions.length > 0 && <SubPositionsTable positions={positions} />}
+        {options.length > 0 && <SubOptionsTable options={options} />}
+        {orders.length > 0 && <SubOrdersTable orders={orders} />}
+        {positions.length === 0 && options.length === 0 && orders.length === 0 && (
+          <div className="text-sm text-(--color-text-dim)">No positions, options, or orders.</div>
+        )}
+      </div>
     </div>
   );
 }
 
-function PositionsTable({
-  positions,
-}: {
-  positions: SnapTradeHoldings["positions"];
-}) {
-  if (positions.length === 0) return null;
+function SubPositionsTable({ positions }: { positions: SnapTradeStock[] }) {
   return (
-    <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
-      <h3 className="mb-2 text-xs uppercase tracking-wide text-(--color-text-dim)">
-        Stock positions
-      </h3>
+    <div>
+      <h4 className="mb-2 text-xs uppercase tracking-wide text-(--color-text-dim)">
+        Stocks ({positions.length})
+      </h4>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="text-xs text-(--color-text-dim)">
             <tr>
               <th className="text-left font-normal">Symbol</th>
-              <th className="text-left font-normal">Account</th>
               <th className="text-right font-normal">Qty</th>
               <th className="text-right font-normal">Avg</th>
               <th className="text-right font-normal">Last</th>
@@ -326,22 +359,13 @@ function PositionsTable({
             {positions.map((p, i) => (
               <tr key={i} className="border-t border-(--color-border)">
                 <td className="py-1 font-medium">{p.ticker ?? "—"}</td>
-                <td className="py-1 text-xs text-(--color-text-dim)">
-                  {p.broker}
-                </td>
                 <td className="py-1 text-right tabular-nums">{p.quantity}</td>
                 <td className="py-1 text-right tabular-nums">
                   {p.avg_cost ? `$${fmtPrice(p.avg_cost)}` : "—"}
                 </td>
-                <td className="py-1 text-right tabular-nums">
-                  ${fmtPrice(p.price)}
-                </td>
-                <td className="py-1 text-right tabular-nums">
-                  ${fmtPrice(p.market_value)}
-                </td>
-                <td
-                  className={`py-1 text-right tabular-nums ${changeClass(p.unrealized_pl)}`}
-                >
+                <td className="py-1 text-right tabular-nums">${fmtPrice(p.price)}</td>
+                <td className="py-1 text-right tabular-nums">${fmtPrice(p.market_value)}</td>
+                <td className={`py-1 text-right tabular-nums ${changeClass(p.unrealized_pl)}`}>
                   {p.unrealized_pl != null
                     ? `${p.unrealized_pl >= 0 ? "+" : "-"}$${fmtPrice(Math.abs(p.unrealized_pl))}`
                     : "—"}
@@ -358,16 +382,12 @@ function PositionsTable({
   );
 }
 
-function OptionsTable({
-  options,
-}: {
-  options: SnapTradeHoldings["options"];
-}) {
+function SubOptionsTable({ options }: { options: SnapTradeOption[] }) {
   return (
-    <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
-      <h3 className="mb-2 text-xs uppercase tracking-wide text-(--color-text-dim)">
-        Options positions
-      </h3>
+    <div>
+      <h4 className="mb-2 text-xs uppercase tracking-wide text-(--color-text-dim)">
+        Options ({options.length})
+      </h4>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="text-xs text-(--color-text-dim)">
@@ -376,7 +396,6 @@ function OptionsTable({
               <th className="text-left font-normal">Type</th>
               <th className="text-right font-normal">Strike</th>
               <th className="text-left font-normal pl-3">Exp</th>
-              <th className="text-left font-normal">Account</th>
               <th className="text-right font-normal">Qty</th>
               <th className="text-right font-normal">Avg</th>
               <th className="text-right font-normal">Last</th>
@@ -393,28 +412,63 @@ function OptionsTable({
                   {o.strike != null ? `$${o.strike}` : "—"}
                 </td>
                 <td className="py-1 pl-3 text-xs tabular-nums">{o.expiration ?? "—"}</td>
-                <td className="py-1 text-xs text-(--color-text-dim)">
-                  {o.broker}
-                </td>
                 <td className="py-1 text-right tabular-nums">{o.quantity}</td>
                 <td className="py-1 text-right tabular-nums">
                   {o.avg_cost ? `$${fmtPrice(o.avg_cost)}` : "—"}
                 </td>
-                <td className="py-1 text-right tabular-nums">
-                  ${fmtPrice(o.price)}
-                </td>
-                <td className="py-1 text-right tabular-nums">
-                  ${fmtPrice(o.market_value)}
-                </td>
-                <td
-                  className={`py-1 text-right tabular-nums ${changeClass(o.unrealized_pl)}`}
-                >
+                <td className="py-1 text-right tabular-nums">${fmtPrice(o.price)}</td>
+                <td className="py-1 text-right tabular-nums">${fmtPrice(o.market_value)}</td>
+                <td className={`py-1 text-right tabular-nums ${changeClass(o.unrealized_pl)}`}>
                   {o.unrealized_pl != null
                     ? `${o.unrealized_pl >= 0 ? "+" : "-"}$${fmtPrice(Math.abs(o.unrealized_pl))}`
                     : "—"}
                   {o.unrealized_pl_pct != null && (
                     <div className="text-[10px]">{fmtPct(o.unrealized_pl_pct)}</div>
                   )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function SubOrdersTable({ orders }: { orders: SnapTradeOrder[] }) {
+  return (
+    <div>
+      <h4 className="mb-2 text-xs uppercase tracking-wide text-(--color-text-dim)">
+        Recent orders ({orders.length})
+      </h4>
+      <div className="max-h-56 overflow-auto">
+        <table className="w-full text-xs">
+          <thead className="text-(--color-text-dim)">
+            <tr>
+              <th className="text-left font-normal">Time</th>
+              <th className="text-left font-normal">Symbol</th>
+              <th className="text-left font-normal">Action</th>
+              <th className="text-right font-normal">Qty</th>
+              <th className="text-right font-normal">Price</th>
+              <th className="text-right font-normal pr-2">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map((o, i) => (
+              <tr key={i} className="border-t border-(--color-border)">
+                <td className="py-1 text-(--color-text-dim) tabular-nums">{fmtTime(o.time)}</td>
+                <td className="py-1 font-medium">{describeOrder(o)}</td>
+                <td className="py-1 uppercase text-(--color-text-dim)">{o.action ?? "—"}</td>
+                <td className="py-1 text-right tabular-nums">{fmtQty(o.total_quantity)}</td>
+                <td className="py-1 text-right tabular-nums">
+                  {o.execution_price != null ? `$${fmtPrice(o.execution_price)}` : "—"}
+                </td>
+                <td className="py-1 pr-2 text-right">
+                  <span
+                    className={`rounded px-1.5 py-0.5 ${STATUS_COLOR[o.status ?? ""] ?? "bg-(--color-panel-2)"}`}
+                  >
+                    {o.status ?? "—"}
+                  </span>
                 </td>
               </tr>
             ))}
@@ -462,54 +516,5 @@ function describeOrder(o: SnapTradeHoldings["orders"][number]): string {
   return o.ticker;
 }
 
-function RecentOrdersTable({
-  orders,
-}: {
-  orders: SnapTradeHoldings["orders"];
-}) {
-  return (
-    <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
-      <h3 className="mb-2 text-xs uppercase tracking-wide text-(--color-text-dim)">
-        Recent broker orders
-      </h3>
-      <div className="max-h-72 overflow-auto">
-        <table className="w-full text-xs">
-          <thead className="text-(--color-text-dim)">
-            <tr>
-              <th className="text-left font-normal">Time</th>
-              <th className="text-left font-normal">Symbol</th>
-              <th className="text-left font-normal">Action</th>
-              <th className="text-right font-normal">Qty</th>
-              <th className="text-right font-normal">Price</th>
-              <th className="text-right font-normal pr-2">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map((o, i) => (
-              <tr key={i} className="border-t border-(--color-border)">
-                <td className="py-1 text-(--color-text-dim) tabular-nums">
-                  {fmtTime(o.time)}
-                </td>
-                <td className="py-1 font-medium">{describeOrder(o)}</td>
-                <td className="py-1 uppercase text-(--color-text-dim)">
-                  {o.action ?? "—"}
-                </td>
-                <td className="py-1 text-right tabular-nums">{fmtQty(o.total_quantity)}</td>
-                <td className="py-1 text-right tabular-nums">
-                  {o.execution_price != null ? `$${fmtPrice(o.execution_price)}` : "—"}
-                </td>
-                <td className="py-1 pr-2 text-right">
-                  <span
-                    className={`rounded px-1.5 py-0.5 ${STATUS_COLOR[o.status ?? ""] ?? "bg-(--color-panel-2)"}`}
-                  >
-                    {o.status ?? "—"}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
+// Legacy merged-tables components removed; per-account SubOrdersTable inside AccountSection
+// now renders these. STATUS_COLOR / fmtTime / fmtQty / describeOrder above remain in use.

@@ -197,6 +197,7 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
                 option_type = strike = expiration = None
             orders.append(
                 {
+                    "account_id": acct_id,
                     "account": acct_name,
                     "broker": broker,
                     "ticker": ticker,
@@ -219,9 +220,10 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
                 "id": acct_id,
                 "name": acct_name,
                 "broker": broker,
-                "type": _safe_get(_safe_get(acct, "meta"), "type"),
-                "balance": bal_total or tv,
+                "type": _safe_get(_safe_get(acct, "meta"), "type") or _safe_get(acct, "raw_type"),
+                "balance": tv or bal_total,
                 "cash": bal_cash,
+                "equity": tv,
             }
         )
 

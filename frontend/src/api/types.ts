@@ -245,6 +245,7 @@ export type SnapTradeAccount = {
   type: string | null;
   balance: number;
   cash: number;
+  equity: number;
 };
 
 export type SnapTradeStock = {
@@ -279,6 +280,7 @@ export type SnapTradeOption = {
 };
 
 export type SnapTradeOrder = {
+  account_id: string | null;
   account: string;
   broker: string;
   ticker: string | null;
