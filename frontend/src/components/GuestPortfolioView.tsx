@@ -129,25 +129,30 @@ export function GuestPortfolioView({
 
   // For each underlying, the list of contracts held — used by the Options
   // donut to drill in on click/tap (mobile-friendly substitute for hover).
+  // Weight basis: $market_value if present (owner), else allocation_pct
+  // (guest, where backend strips $ amounts). Either way the within-underlying
+  // ratios end up the same.
   const optionContractsByUnderlying = useMemo(() => {
+    const weightOf = (o: (typeof holdings.options)[number]) =>
+      o.market_value || o.allocation_pct || 0;
     const totals = new Map<string, number>();
     for (const o of holdings.options) {
       const k = o.underlying ?? "—";
-      totals.set(k, (totals.get(k) ?? 0) + (o.market_value || 0));
+      totals.set(k, (totals.get(k) ?? 0) + weightOf(o));
     }
     const out = new Map<string, SliceDetail[]>();
     for (const o of holdings.options) {
       const k = o.underlying ?? "—";
       const total = totals.get(k) ?? 0;
-      const value = o.market_value || 0;
+      const w = weightOf(o);
       const typeChar = o.option_type?.[0]?.toUpperCase() ?? "?";
       const strike = o.strike != null ? `$${o.strike}` : "?";
       const exp = o.expiration ?? "";
       const list = out.get(k) ?? [];
       list.push({
         label: `${strike}${typeChar} ${exp}`.trim(),
-        pct: total ? (value / total) * 100 : 0,
-        value: ownerMode ? value : undefined,
+        pct: total ? (w / total) * 100 : 0,
+        value: ownerMode ? o.market_value : undefined,
       });
       out.set(k, list);
     }
