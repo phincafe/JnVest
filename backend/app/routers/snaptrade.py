@@ -61,12 +61,37 @@ def _ticker_of(symbol_field: Any) -> str | None:
         if cur is None:
             return None
         if isinstance(cur, str):
+            # Reject UUID-looking strings (Robinhood option_id leaks here sometimes).
+            if len(cur) == 36 and cur.count("-") == 4:
+                return None
             return cur
         if isinstance(cur, dict):
             cur = cur.get("symbol")
             continue
         return None
     return None
+
+
+def _resolve_order_option(o: dict[str, Any]) -> dict[str, Any] | None:
+    """Find the option-symbol dict on an order regardless of where it's nested.
+    Some brokers attach it at the top level (`o.option_symbol`), some bury it
+    inside `o.symbol.option_symbol`."""
+    direct = _safe_get(o, "option_symbol")
+    if isinstance(direct, dict) and direct:
+        return direct
+    nested = _safe_get(_safe_get(o, "symbol"), "option_symbol")
+    if isinstance(nested, dict) and nested:
+        return nested
+    return None
+
+
+def _action_is_option(action: str | None) -> bool:
+    """Heuristic: option order actions are BUY_OPEN / SELL_CLOSE / etc.
+    Stock actions are BUY / SELL."""
+    if not action:
+        return False
+    a = action.upper()
+    return any(k in a for k in ("OPEN", "CLOSE")) and "_" in a
 
 
 def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
@@ -179,22 +204,23 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
         for o in entry.get("orders") or []:
             if not isinstance(o, dict):
                 continue
-            # Option orders carry contract details on top-level option_symbol;
-            # stock orders carry the ticker on symbol or universal_symbol.
-            opt_sym = _safe_get(o, "option_symbol") or {}
-            is_option = bool(opt_sym)
-            if is_option:
+            opt_sym = _resolve_order_option(o)
+            is_option = bool(opt_sym) or _action_is_option(o.get("action"))
+            if opt_sym:
                 ticker = _ticker_of(_safe_get(opt_sym, "underlying_symbol"))
                 option_type = _safe_get(opt_sym, "option_type")
                 strike = _safe_get(opt_sym, "strike_price")
                 expiration = _safe_get(opt_sym, "expiration_date")
             else:
-                ticker = (
-                    _ticker_of(o.get("symbol"))
-                    or _ticker_of(o.get("universal_symbol"))
-                    or _ticker_of(o.get("quote_universal_symbol"))
-                )
+                ticker = None
                 option_type = strike = expiration = None
+            # Always try the universal symbol path as a backup for the underlying.
+            if not ticker:
+                ticker = (
+                    _ticker_of(o.get("universal_symbol"))
+                    or _ticker_of(o.get("quote_universal_symbol"))
+                    or _ticker_of(o.get("symbol"))
+                )
             orders.append(
                 {
                     "account_id": acct_id,
@@ -235,7 +261,7 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
         "accounts": out_accounts,
         "positions": stocks,
         "options": options,
-        "orders": orders[:50],
+        "orders": orders[:25],
         "totals": {
             "market_value": total_value,
             "cash": total_cash,

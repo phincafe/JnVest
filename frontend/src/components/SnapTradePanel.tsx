@@ -20,6 +20,7 @@ export function SnapTradePanel({ refreshNonce }: { refreshNonce: number }) {
   const [err, setErr] = useState<string | null>(null);
   const [needsCfg, setNeedsCfg] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("all");
 
   const load = useCallback(async () => {
     try {
@@ -168,29 +169,194 @@ export function SnapTradePanel({ refreshNonce }: { refreshNonce: number }) {
             </div>
           ) : (
             <>
-              <ConnectionList auths={auths} onDisconnect={disconnect} busy={busy} />
               {holdings && <TotalsCard totals={holdings.totals} />}
-              {holdings &&
-                holdings.accounts.map((acct) => (
-                  <AccountSection
-                    key={acct.id}
-                    account={acct}
-                    positions={holdings.positions.filter(
-                      (p) => p.account_id === acct.id,
-                    )}
-                    options={holdings.options.filter(
-                      (o) => o.account_id === acct.id,
-                    )}
-                    orders={holdings.orders.filter(
-                      (o) => o.account_id === acct.id,
-                    )}
-                  />
-                ))}
+              {holdings && (
+                <AccountChips
+                  accounts={holdings.accounts}
+                  positions={holdings.positions}
+                  options={holdings.options}
+                  selected={selectedAccountId}
+                  onSelect={setSelectedAccountId}
+                />
+              )}
+              {holdings && (
+                <SelectedAccountDetail
+                  selectedId={selectedAccountId}
+                  holdings={holdings}
+                  auths={auths}
+                  onDisconnect={disconnect}
+                  busy={busy}
+                />
+              )}
             </>
           )}
         </>
       )}
     </section>
+  );
+}
+
+function AccountChips({
+  accounts,
+  positions,
+  options,
+  selected,
+  onSelect,
+}: {
+  accounts: SnapTradeAccount[];
+  positions: SnapTradeStock[];
+  options: SnapTradeOption[];
+  selected: string;
+  onSelect: (id: string) => void;
+}) {
+  const totalEq = accounts.reduce((s, a) => s + (a.equity || a.balance || 0), 0);
+  return (
+    <div className="-mx-1 flex items-stretch gap-2 overflow-x-auto px-1 py-1">
+      <Chip
+        active={selected === "all"}
+        onClick={() => onSelect("all")}
+        title="All accounts"
+        subtitle={`${accounts.length} brokerage${accounts.length === 1 ? "" : "s"}`}
+        amount={`$${fmtPrice(totalEq)}`}
+      />
+      {accounts.map((a) => {
+        const acctPos = positions.filter((p) => p.account_id === a.id);
+        const acctOpts = options.filter((o) => o.account_id === a.id);
+        const cost =
+          acctPos.reduce((s, p) => s + (p.avg_cost ? p.quantity * p.avg_cost : 0), 0) +
+          acctOpts.reduce((s, o) => s + (o.avg_cost ? o.quantity * o.avg_cost * 100 : 0), 0);
+        const value =
+          acctPos.reduce((s, p) => s + p.market_value, 0) +
+          acctOpts.reduce((s, o) => s + o.market_value, 0);
+        const pl = cost ? value - cost : null;
+        const plPct = cost ? ((value - cost) / cost) * 100 : null;
+        return (
+          <Chip
+            key={a.id}
+            active={selected === a.id}
+            onClick={() => onSelect(a.id)}
+            title={a.name}
+            subtitle={a.broker + (a.type ? ` · ${a.type}` : "")}
+            amount={`$${fmtPrice(a.balance || 0)}`}
+            pl={pl}
+            plPct={plPct}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function Chip({
+  active,
+  onClick,
+  title,
+  subtitle,
+  amount,
+  pl,
+  plPct,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  subtitle: string;
+  amount: string;
+  pl?: number | null;
+  plPct?: number | null;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex min-w-[10rem] flex-col items-start gap-0.5 rounded-xl border p-3 text-left transition-colors ${
+        active
+          ? "border-(--color-accent) bg-(--color-accent)/10"
+          : "border-(--color-border) bg-(--color-panel) hover:border-(--color-text-dim)"
+      }`}
+    >
+      <div className="text-sm font-semibold">{title}</div>
+      <div className="text-[10px] uppercase tracking-wide text-(--color-text-dim)">
+        {subtitle}
+      </div>
+      <div className="mt-1 flex items-baseline gap-2 tabular-nums">
+        <span className="text-base font-semibold">{amount}</span>
+        {pl != null && (
+          <span className={`text-[11px] ${changeClass(pl)}`}>
+            {pl >= 0 ? "+" : "-"}${fmtPrice(Math.abs(pl))}
+            {plPct != null && ` (${fmtPct(plPct)})`}
+          </span>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function SelectedAccountDetail({
+  selectedId,
+  holdings,
+  auths,
+  onDisconnect,
+  busy,
+}: {
+  selectedId: string;
+  holdings: SnapTradeHoldings;
+  auths: SnapTradeAuthorization[] | null;
+  onDisconnect: (id: string) => void;
+  busy: boolean;
+}) {
+  if (selectedId === "all") {
+    // Aggregated view: roll all positions/options into one set, top 5 orders, connection list at bottom.
+    return (
+      <div className="space-y-4">
+        <AggregatedDetail holdings={holdings} />
+        {auths && auths.length > 0 && (
+          <ConnectionList auths={auths} onDisconnect={onDisconnect} busy={busy} />
+        )}
+      </div>
+    );
+  }
+  const acct = holdings.accounts.find((a) => a.id === selectedId);
+  if (!acct) {
+    return (
+      <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4 text-sm text-(--color-text-dim)">
+        Account no longer connected.
+      </div>
+    );
+  }
+  return (
+    <AccountSection
+      account={acct}
+      positions={holdings.positions.filter((p) => p.account_id === acct.id)}
+      options={holdings.options.filter((o) => o.account_id === acct.id)}
+      orders={holdings.orders.filter((o) => o.account_id === acct.id).slice(0, 5)}
+    />
+  );
+}
+
+function AggregatedDetail({ holdings }: { holdings: SnapTradeHoldings }) {
+  const positions = holdings.positions;
+  const options = holdings.options;
+  const orders = holdings.orders.slice(0, 5);
+  return (
+    <div className="rounded-xl border border-(--color-border) bg-(--color-panel)">
+      <header className="border-b border-(--color-border) px-4 py-3">
+        <div className="text-base font-semibold">All accounts</div>
+        <div className="text-xs text-(--color-text-dim)">
+          {holdings.accounts.length} brokerage{holdings.accounts.length === 1 ? "" : "s"} ·
+          {" "}
+          {positions.length} stock position{positions.length === 1 ? "" : "s"} ·
+          {" "}
+          {options.length} option{options.length === 1 ? "" : "s"}
+        </div>
+      </header>
+      <div className="space-y-4 p-4">
+        {positions.length > 0 && <SubPositionsTable positions={positions} />}
+        {options.length > 0 && <SubOptionsTable options={options} />}
+        {orders.length > 0 && <SubOrdersTable orders={orders} />}
+        {positions.length === 0 && options.length === 0 && (
+          <div className="text-sm text-(--color-text-dim)">No positions across any account.</div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -205,6 +371,9 @@ function ConnectionList({
 }) {
   return (
     <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-3">
+      <h4 className="mb-2 text-xs uppercase tracking-wide text-(--color-text-dim)">
+        Connections
+      </h4>
       <ul className="divide-y divide-(--color-border)">
         {auths.map((a) => (
           <li
