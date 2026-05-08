@@ -168,16 +168,9 @@ export function GuestPortfolioView({
 
   return (
     <section className="space-y-4">
-      <div>
-        <h2 className="text-sm font-medium text-(--color-text-dim)">
-          {ownerMode ? "Portfolio overview" : "Public portfolio view"}
-        </h2>
-        <p className="mt-1 text-xs text-(--color-text-dim)">
-          {ownerMode
-            ? "Allocation by stock, option underlying, and cash."
-            : "What's held + portfolio weight (%). $ amounts and per-account breakdowns are hidden."}
-        </p>
-      </div>
+      <h2 className="text-sm font-medium text-(--color-text-dim)">
+        {ownerMode ? "Portfolio overview" : "Public portfolio view"}
+      </h2>
 
       <PortfolioMixBar
         stockPct={stockPctOfPortfolio}
