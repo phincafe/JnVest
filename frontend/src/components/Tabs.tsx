@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { LucideIcon } from "lucide-react";
 
 export type TabDef = {
@@ -49,11 +51,32 @@ export function Tabs({ tabs, active, onChange }: Props) {
 }
 
 export function MobileTabBar({ tabs, active, onChange }: Props) {
-  return (
+  // Render via Portal directly to <body> so the bar is never affected by
+  // ancestor stacking contexts (Recharts/lightweight-charts internally use
+  // CSS transforms which can contain fixed children inside their parents).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  if (!mounted) return null;
+
+  const node = (
     <nav
       role="tablist"
       aria-label="JnVest sections (mobile)"
-      className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-(--color-border) bg-(--color-bg)/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+      // No backdrop-blur — caused fixed-positioning glitches in iOS Safari
+      // when a chart re-paints. Solid background is fine here.
+      style={{
+        position: "fixed",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 60,
+        paddingBottom: "env(safe-area-inset-bottom)",
+        WebkitTransform: "translateZ(0)",
+        transform: "translateZ(0)",
+      }}
+      className="grid grid-cols-4 border-t border-(--color-border) bg-(--color-bg) md:hidden"
     >
       {tabs.map((t) => {
         const Icon = t.icon;
@@ -77,4 +100,6 @@ export function MobileTabBar({ tabs, active, onChange }: Props) {
       })}
     </nav>
   );
+
+  return createPortal(node, document.body);
 }
