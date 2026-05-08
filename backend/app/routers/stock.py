@@ -3,7 +3,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from ..services import alpaca, finnhub, yahoo
+from ..services import alpaca, finnhub, yahoo  # noqa: F401
 from ..services.indicators import sma
 
 router = APIRouter(prefix="/stock", tags=["stock"])
@@ -91,25 +91,80 @@ async def stock_news(symbol: str, limit: int = 10) -> dict[str, Any]:
 
 @router.get("/{symbol}/fundamentals")
 async def stock_fundamentals(symbol: str) -> dict[str, Any]:
-    info = await yahoo.info(symbol.upper())
-    next_er = await yahoo.next_earnings_date(symbol.upper())
-    ex_div_ts = info.get("exDividendDate")
-    ex_div: str | None = None
-    if ex_div_ts:
-        try:
-            ex_div = datetime.utcfromtimestamp(int(ex_div_ts)).strftime("%Y-%m-%d")
-        except (ValueError, TypeError, OSError):
-            ex_div = None
-
-    return {
-        "symbol": symbol.upper(),
-        "next_earnings": next_er,
-        "ex_dividend": ex_div,
-        "analyst_target_mean": info.get("targetMeanPrice"),
-        "analyst_target_high": info.get("targetHighPrice"),
-        "analyst_target_low": info.get("targetLowPrice"),
-        "analyst_count": info.get("numberOfAnalystOpinions"),
-        "market_cap": info.get("marketCap"),
-        "trailing_pe": info.get("trailingPE"),
-        "forward_pe": info.get("forwardPE"),
+    """Combined fundamentals. Prefer Finnhub (reliable) and fall back to yfinance
+    when a field is missing — yfinance is frequently rate-limited from cloud IPs."""
+    sym = symbol.upper()
+    out: dict[str, Any] = {
+        "symbol": sym,
+        "next_earnings": None,
+        "ex_dividend": None,
+        "analyst_target_mean": None,
+        "analyst_target_high": None,
+        "analyst_target_low": None,
+        "analyst_count": None,
+        "market_cap": None,
+        "trailing_pe": None,
+        "forward_pe": None,
     }
+
+    # --- Finnhub (preferred) ---
+    try:
+        metric = await finnhub.basic_financials(sym)
+        out["market_cap"] = metric.get("marketCapitalization")
+        out["trailing_pe"] = metric.get("peTTM") or metric.get("peNormalizedAnnual")
+        out["forward_pe"] = metric.get("peNTM") or metric.get("peExclExtraTTM")
+    except Exception:
+        pass
+    try:
+        pt = await finnhub.price_target(sym)
+        out["analyst_target_mean"] = pt.get("targetMean") or pt.get("targetMedian")
+        out["analyst_target_high"] = pt.get("targetHigh")
+        out["analyst_target_low"] = pt.get("targetLow")
+        out["analyst_count"] = pt.get("numberOfAnalysts")
+    except Exception:
+        pass
+    try:
+        er = await finnhub.earnings_for_symbol(sym)
+        if er and er.get("date"):
+            out["next_earnings"] = er["date"]
+    except Exception:
+        pass
+    try:
+        profile = await finnhub.company_profile(sym)
+        if profile.get("marketCapitalization") and not out["market_cap"]:
+            out["market_cap"] = profile["marketCapitalization"]
+    except Exception:
+        pass
+
+    # --- yfinance fallback for ex-dividend (Finnhub free tier doesn't expose it) ---
+    try:
+        info = await yahoo.info(sym)
+        ex_div_ts = info.get("exDividendDate")
+        if ex_div_ts:
+            try:
+                out["ex_dividend"] = datetime.utcfromtimestamp(int(ex_div_ts)).strftime("%Y-%m-%d")
+            except (ValueError, TypeError, OSError):
+                pass
+        if not out["next_earnings"]:
+            ner = await yahoo.next_earnings_date(sym)
+            if ner:
+                out["next_earnings"] = ner
+        # Backfill any None fields from yfinance if Finnhub didn't have them
+        if out["analyst_target_mean"] is None:
+            out["analyst_target_mean"] = info.get("targetMeanPrice")
+        if out["analyst_target_high"] is None:
+            out["analyst_target_high"] = info.get("targetHighPrice")
+        if out["analyst_target_low"] is None:
+            out["analyst_target_low"] = info.get("targetLowPrice")
+        if out["analyst_count"] is None:
+            out["analyst_count"] = info.get("numberOfAnalystOpinions")
+        if out["market_cap"] is None:
+            out["market_cap"] = info.get("marketCap")
+        if out["trailing_pe"] is None:
+            out["trailing_pe"] = info.get("trailingPE")
+        if out["forward_pe"] is None:
+            out["forward_pe"] = info.get("forwardPE")
+    except Exception:
+        pass
+
+    return out

@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..services import snaptrade_svc
+from ..models import WatchlistTicker
+from ..services import snaptrade_svc, streamer
 
 router = APIRouter(prefix="/snaptrade", tags=["snaptrade"])
 
@@ -178,17 +179,38 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
         for o in entry.get("orders") or []:
             if not isinstance(o, dict):
                 continue
+            # Option orders carry contract details on top-level option_symbol;
+            # stock orders carry the ticker on symbol or universal_symbol.
+            opt_sym = _safe_get(o, "option_symbol") or {}
+            is_option = bool(opt_sym)
+            if is_option:
+                ticker = _ticker_of(_safe_get(opt_sym, "underlying_symbol"))
+                option_type = _safe_get(opt_sym, "option_type")
+                strike = _safe_get(opt_sym, "strike_price")
+                expiration = _safe_get(opt_sym, "expiration_date")
+            else:
+                ticker = (
+                    _ticker_of(o.get("symbol"))
+                    or _ticker_of(o.get("universal_symbol"))
+                    or _ticker_of(o.get("quote_universal_symbol"))
+                )
+                option_type = strike = expiration = None
             orders.append(
                 {
                     "account": acct_name,
                     "broker": broker,
-                    "ticker": _ticker_of(o.get("symbol")),
+                    "ticker": ticker,
+                    "is_option": is_option,
+                    "option_type": option_type,
+                    "strike": strike,
+                    "expiration": expiration,
                     "action": o.get("action"),
+                    "order_type": o.get("order_type"),
                     "status": o.get("status"),
-                    "total_quantity": o.get("total_quantity"),
-                    "filled_quantity": o.get("filled_quantity"),
+                    "total_quantity": float(o.get("total_quantity") or 0) or None,
+                    "filled_quantity": float(o.get("filled_quantity") or 0) or None,
                     "execution_price": o.get("execution_price"),
-                    "time_executed": o.get("time_executed") or o.get("time_placed"),
+                    "time": o.get("time_executed") or o.get("time_placed"),
                 }
             )
 
@@ -203,6 +225,10 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
             }
         )
 
+    cost_basis = sum((s["quantity"] * s["avg_cost"]) for s in stocks if s.get("avg_cost")) + sum(
+        (op["quantity"] * (op["avg_cost"] or 0) * 100) for op in options if op.get("avg_cost")
+    )
+
     return {
         "accounts": out_accounts,
         "positions": stocks,
@@ -212,6 +238,8 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
             "market_value": total_value,
             "cash": total_cash,
             "unrealized_pl": total_pl,
+            "cost_basis": cost_basis,
+            "equity": total_value,  # alias for clarity in UI
         },
     }
 
@@ -226,3 +254,43 @@ def get_holdings(db: Session = Depends(get_db)) -> dict[str, Any]:
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"SnapTrade error: {e}") from e
     return _flatten(raw)
+
+
+@router.post("/sync-watchlist")
+def sync_to_watchlist(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Add every stock + every option underlying you own to the watchlist
+    (skipping ones already there)."""
+    try:
+        user = snaptrade_svc.get_or_create_user(db)
+        raw = snaptrade_svc.all_holdings(user)
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"SnapTrade error: {e}") from e
+
+    flat = _flatten(raw)
+    tickers: set[str] = set()
+    for s in flat["positions"]:
+        if s.get("ticker") and s["quantity"] > 0:
+            tickers.add(s["ticker"].upper())
+    for o in flat["options"]:
+        if o.get("underlying"):
+            tickers.add(o["underlying"].upper())
+
+    existing = {r.symbol for r in db.query(WatchlistTicker).all()}
+    new_syms = sorted(tickers - existing)
+    if not new_syms:
+        return {"added": 0, "skipped_existing": len(tickers & existing), "tickers": []}
+
+    next_order = db.query(WatchlistTicker).order_by(WatchlistTicker.sort_order.desc()).first()
+    base_order = (next_order.sort_order + 1) if next_order else 0
+    for i, sym in enumerate(new_syms):
+        db.add(WatchlistTicker(symbol=sym, sort_order=base_order + i))
+    db.commit()
+    streamer.notify_watchlist_changed()
+
+    return {
+        "added": len(new_syms),
+        "skipped_existing": len(tickers & existing),
+        "tickers": new_syms,
+    }

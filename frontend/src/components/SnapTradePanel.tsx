@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ExternalLink, RefreshCcw, Trash2 } from "lucide-react";
+import { ExternalLink, ListPlus, RefreshCcw, Trash2 } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type {
   SnapTradeAuthorization,
@@ -71,6 +71,25 @@ export function SnapTradePanel({ refreshNonce }: { refreshNonce: number }) {
     }
   };
 
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const syncToWatchlist = async () => {
+    setBusy(true);
+    setSyncMsg(null);
+    try {
+      const r = await api.post<{ added: number; skipped_existing: number; tickers: string[] }>(
+        "/snaptrade/sync-watchlist",
+      );
+      const tail = r.tickers.length ? ` (${r.tickers.slice(0, 5).join(", ")}${r.tickers.length > 5 ? "…" : ""})` : "";
+      setSyncMsg(
+        `Added ${r.added} ticker${r.added === 1 ? "" : "s"} to watchlist${tail}. ${r.skipped_existing} already there.`,
+      );
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.detail : (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between">
@@ -78,6 +97,14 @@ export function SnapTradePanel({ refreshNonce }: { refreshNonce: number }) {
           Brokerages (via SnapTrade)
         </h2>
         <div className="flex items-center gap-2">
+          <button
+            onClick={syncToWatchlist}
+            disabled={busy || needsCfg || (auths?.length ?? 0) === 0}
+            title="Add every stock + option underlying you hold to the watchlist"
+            className="flex items-center gap-1 rounded-md border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-panel-2) disabled:opacity-50"
+          >
+            <ListPlus size={12} /> Sync to watchlist
+          </button>
           <button
             onClick={load}
             disabled={busy}
@@ -95,6 +122,12 @@ export function SnapTradePanel({ refreshNonce }: { refreshNonce: number }) {
           </button>
         </div>
       </div>
+
+      {syncMsg && (
+        <div className="rounded-md border border-(--color-up)/40 bg-(--color-panel-2) p-2 text-xs text-(--color-up)">
+          {syncMsg}
+        </div>
+      )}
 
       {needsCfg && (
         <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 p-3 text-xs text-yellow-200">
@@ -196,17 +229,24 @@ function ConnectionList({
 }
 
 function TotalsCard({ totals }: { totals: SnapTradeHoldings["totals"] }) {
+  const totalReturnPct =
+    totals.cost_basis > 0
+      ? (totals.unrealized_pl / totals.cost_basis) * 100
+      : null;
   const cards = [
-    { label: "Market value", value: `$${fmtPrice(totals.market_value)}` },
+    { label: "Total equity", value: `$${fmtPrice(totals.equity)}` },
     { label: "Cash", value: `$${fmtPrice(totals.cash)}` },
+    { label: "Cost basis", value: totals.cost_basis ? `$${fmtPrice(totals.cost_basis)}` : "—" },
     {
       label: "Unrealized P&L",
-      value: `${totals.unrealized_pl >= 0 ? "+" : "-"}$${fmtPrice(Math.abs(totals.unrealized_pl))}`,
+      value:
+        `${totals.unrealized_pl >= 0 ? "+" : "-"}$${fmtPrice(Math.abs(totals.unrealized_pl))}` +
+        (totalReturnPct != null ? ` (${fmtPct(totalReturnPct)})` : ""),
       tone: "pl" as const,
     },
   ];
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {cards.map((c) => (
         <div
           key={c.label}
@@ -335,7 +375,7 @@ function OptionsTable({
               <th className="text-left font-normal">Underlying</th>
               <th className="text-left font-normal">Type</th>
               <th className="text-right font-normal">Strike</th>
-              <th className="text-left font-normal">Exp</th>
+              <th className="text-left font-normal pl-3">Exp</th>
               <th className="text-left font-normal">Account</th>
               <th className="text-right font-normal">Qty</th>
               <th className="text-right font-normal">Avg</th>
@@ -348,13 +388,11 @@ function OptionsTable({
             {options.map((o, i) => (
               <tr key={i} className="border-t border-(--color-border)">
                 <td className="py-1 font-medium">{o.underlying ?? "—"}</td>
-                <td className="py-1 capitalize">
-                  {o.option_type ?? "—"}
-                </td>
+                <td className="py-1 capitalize">{o.option_type?.toLowerCase() ?? "—"}</td>
                 <td className="py-1 text-right tabular-nums">
                   {o.strike != null ? `$${o.strike}` : "—"}
                 </td>
-                <td className="py-1 text-xs">{o.expiration ?? "—"}</td>
+                <td className="py-1 pl-3 text-xs tabular-nums">{o.expiration ?? "—"}</td>
                 <td className="py-1 text-xs text-(--color-text-dim)">
                   {o.broker}
                 </td>
@@ -387,6 +425,43 @@ function OptionsTable({
   );
 }
 
+const STATUS_COLOR: Record<string, string> = {
+  EXECUTED: "bg-(--color-up)/20 text-(--color-up)",
+  CANCELED: "bg-(--color-text-dim)/20 text-(--color-text-dim)",
+  PARTIAL: "bg-yellow-500/20 text-yellow-200",
+  PENDING: "bg-blue-500/20 text-blue-200",
+  REJECTED: "bg-(--color-down)/20 text-(--color-down)",
+};
+
+function fmtTime(t: string | null): string {
+  if (!t) return "—";
+  try {
+    const d = new Date(t);
+    return d.toLocaleString(undefined, {
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return t;
+  }
+}
+
+function fmtQty(n: number | null): string {
+  if (n == null) return "—";
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
+function describeOrder(o: SnapTradeHoldings["orders"][number]): string {
+  if (!o.ticker) return "—";
+  if (o.is_option && o.strike != null && o.expiration && o.option_type) {
+    const t = o.option_type.toLowerCase().startsWith("c") ? "C" : "P";
+    return `${o.ticker} $${o.strike}${t} ${o.expiration}`;
+  }
+  return o.ticker;
+}
+
 function RecentOrdersTable({
   orders,
 }: {
@@ -397,21 +472,44 @@ function RecentOrdersTable({
       <h3 className="mb-2 text-xs uppercase tracking-wide text-(--color-text-dim)">
         Recent broker orders
       </h3>
-      <ul className="max-h-64 space-y-1 overflow-auto">
-        {orders.map((o, i) => (
-          <li key={i} className="flex items-center justify-between text-xs">
-            <div>
-              <span className="font-medium">{o.ticker ?? "—"}</span>{" "}
-              <span className="uppercase text-(--color-text-dim)">
-                {o.action}
-              </span>{" "}
-              <span className="tabular-nums">{o.total_quantity}</span>{" "}
-              <span className="text-(--color-text-dim)">{o.broker}</span>
-            </div>
-            <span className="text-(--color-text-dim)">{o.status}</span>
-          </li>
-        ))}
-      </ul>
+      <div className="max-h-72 overflow-auto">
+        <table className="w-full text-xs">
+          <thead className="text-(--color-text-dim)">
+            <tr>
+              <th className="text-left font-normal">Time</th>
+              <th className="text-left font-normal">Symbol</th>
+              <th className="text-left font-normal">Action</th>
+              <th className="text-right font-normal">Qty</th>
+              <th className="text-right font-normal">Price</th>
+              <th className="text-right font-normal pr-2">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map((o, i) => (
+              <tr key={i} className="border-t border-(--color-border)">
+                <td className="py-1 text-(--color-text-dim) tabular-nums">
+                  {fmtTime(o.time)}
+                </td>
+                <td className="py-1 font-medium">{describeOrder(o)}</td>
+                <td className="py-1 uppercase text-(--color-text-dim)">
+                  {o.action ?? "—"}
+                </td>
+                <td className="py-1 text-right tabular-nums">{fmtQty(o.total_quantity)}</td>
+                <td className="py-1 text-right tabular-nums">
+                  {o.execution_price != null ? `$${fmtPrice(o.execution_price)}` : "—"}
+                </td>
+                <td className="py-1 pr-2 text-right">
+                  <span
+                    className={`rounded px-1.5 py-0.5 ${STATUS_COLOR[o.status ?? ""] ?? "bg-(--color-panel-2)"}`}
+                  >
+                    {o.status ?? "—"}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

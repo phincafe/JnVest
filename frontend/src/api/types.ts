@@ -282,12 +282,17 @@ export type SnapTradeOrder = {
   account: string;
   broker: string;
   ticker: string | null;
+  is_option: boolean;
+  option_type: string | null;
+  strike: number | null;
+  expiration: string | null;
   action: string | null;
+  order_type: string | null;
   status: string | null;
   total_quantity: number | null;
   filled_quantity: number | null;
   execution_price: number | null;
-  time_executed: string | null;
+  time: string | null;
 };
 
 export type SnapTradeHoldings = {
@@ -297,8 +302,10 @@ export type SnapTradeHoldings = {
   orders: SnapTradeOrder[];
   totals: {
     market_value: number;
+    equity: number;
     cash: number;
     unrealized_pl: number;
+    cost_basis: number;
   };
 };
 
