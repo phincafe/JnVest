@@ -178,6 +178,23 @@ async def market_news(limit: int = 20) -> dict[str, Any]:
     return {"items": trimmed}
 
 
+@router.get("/intraday/{symbol}")
+async def intraday(symbol: str, interval: str = "5Min") -> dict[str, Any]:
+    """Today's intraday bars at the chosen interval (1Min / 5Min / 15Min /
+    30Min / 1Hour). Used by the live index chart on the Morning tab."""
+    if interval not in ("1Min", "5Min", "15Min", "30Min", "1Hour"):
+        raise HTTPException(status_code=400, detail="invalid interval")
+    try:
+        # Pull today's bars (start = 24h ago to safely include premarket).
+        from datetime import datetime, timedelta
+
+        start = (datetime.utcnow() - timedelta(hours=36)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        bars = await alpaca.bars(symbol.upper(), timeframe=interval, start=start, limit=1000)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
+    return {"symbol": symbol.upper(), "interval": interval, "bars": bars}
+
+
 @router.get("/macro")
 async def macro() -> dict[str, Any]:
     """VIXY (vol proxy) + UUP (dollar proxy). Native ^VIX/^TNX/DXY require yfinance."""
