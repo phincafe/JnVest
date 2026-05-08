@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LogIn, LogOut, RefreshCcw, Search } from "lucide-react";
+import { LogOut, RefreshCcw, Search } from "lucide-react";
 import { api } from "../api/client";
 import type { SnapTradeHoldings } from "../api/types";
 import { changeClass, fmtPrice } from "../lib/format";
@@ -114,7 +114,7 @@ export function Header({
           >
             <RefreshCcw size={14} />
           </button>
-          {role === "owner" ? (
+          {role === "owner" && (
             <button
               onClick={onLogout}
               className="flex h-9 w-9 items-center justify-center rounded-md border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
@@ -123,17 +123,6 @@ export function Header({
             >
               <LogOut size={14} />
             </button>
-          ) : (
-            onLogin && (
-              <button
-                onClick={onLogin}
-                className="flex items-center gap-1.5 rounded-md border border-(--color-accent)/60 bg-(--color-accent)/10 px-3 py-1.5 text-xs font-medium text-(--color-accent) hover:bg-(--color-accent)/20"
-                aria-label="Owner login"
-                title="Owner login"
-              >
-                <LogIn size={14} /> Owner
-              </button>
-            )
           )}
         </div>
       </div>

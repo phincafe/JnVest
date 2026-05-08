@@ -136,6 +136,18 @@ export function App() {
         </Suspense>
       </ErrorBoundary>
 
+      {role === "guest" && (
+        <footer className="mt-12 mb-6 text-center">
+          <button
+            type="button"
+            onClick={onLoginClick}
+            className="text-[11px] text-(--color-text-dim)/70 underline-offset-2 hover:text-(--color-text-dim) hover:underline"
+          >
+            Owner login
+          </button>
+        </footer>
+      )}
+
       <MobileTabBar tabs={TABS} active={active} onChange={setActive} />
 
       <CommandPalette
