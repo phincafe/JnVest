@@ -42,3 +42,9 @@ services:
         sync: false
       - key: FRED_API_KEY
         sync: false
+      - key: PLAID_CLIENT_ID
+        sync: false
+      - key: PLAID_SECRET
+        sync: false
+      - key: PLAID_ENV
+        value: sandbox

@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from .config import get_settings
 from .db import Base, SessionLocal, engine
 from .models import WatchlistTicker
-from .routers import calendar, market, options, orders, positions, stock, watchlist
+from .routers import calendar, market, options, orders, plaid, positions, stock, watchlist
 from .services import streamer
 
 DEFAULT_WATCHLIST = ["AAPL", "NVDA", "TSLA", "SPY", "QQQ"]
@@ -120,6 +120,7 @@ app.include_router(options.router, prefix="/api")
 app.include_router(calendar.router, prefix="/api")
 app.include_router(positions.router, prefix="/api")
 app.include_router(orders.router, prefix="/api")
+app.include_router(plaid.router, prefix="/api")
 
 
 @app.websocket("/api/ws")

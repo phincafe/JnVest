@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     finnhub_api_key: str = ""
     fred_api_key: str = ""
 
+    # Plaid Investments — sign up at https://dashboard.plaid.com
+    plaid_client_id: str = ""
+    plaid_secret: str = ""
+    plaid_env: str = "sandbox"  # sandbox | production
+
     @property
     def is_paper(self) -> bool:
         return "paper" in self.alpaca_base_url

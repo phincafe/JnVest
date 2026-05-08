@@ -30,6 +30,22 @@ class ManualPosition(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class PlaidItem(Base):
+    """One Plaid 'item' = one connected institution. Stores the access_token in the
+    clear since this is a single-user app and the DB itself is access-controlled.
+    If you ever multi-tenant this, encrypt at rest."""
+
+    __tablename__ = "jnv_plaid_items"
+    __table_args__ = (UniqueConstraint("item_id", name="uq_jnv_plaid_item_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    item_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    access_token: Mapped[str] = mapped_column(String(255), nullable=False)
+    institution_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    institution_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class IVHistory(Base):
     """Stores daily ATM IV snapshots so we can compute IV Rank/Percentile over 1Y."""
 
