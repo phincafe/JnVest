@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { RefreshCcw } from "lucide-react";
 import { api } from "./api/client";
 import type { AuthStatus } from "./api/types";
+import { Calendar } from "./components/Calendar";
 import { Login } from "./components/Login";
 import { MarketContext } from "./components/MarketContext";
 import { StockDetail } from "./components/StockDetail";
@@ -68,6 +69,7 @@ export function App() {
           onSelect={setSelectedSymbol}
         />
         <StockDetail symbol={selectedSymbol} />
+        <Calendar refreshNonce={refreshNonce} />
         <ApiBanner />
       </main>
     </div>

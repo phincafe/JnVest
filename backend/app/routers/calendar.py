@@ -1,0 +1,92 @@
+from datetime import datetime, timedelta
+from typing import Any
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from ..db import get_db
+from ..models import WatchlistTicker
+from ..services import finnhub
+
+router = APIRouter(prefix="/calendar", tags=["calendar"])
+
+
+def _impact_label(raw: str | None) -> str:
+    if not raw:
+        return "low"
+    s = str(raw).lower()
+    if s in ("high", "h", "3"):
+        return "high"
+    if s in ("medium", "med", "m", "2"):
+        return "medium"
+    return "low"
+
+
+@router.get("/today")
+async def today(db: Session = Depends(get_db)) -> dict[str, Any]:
+    watchlist = {r.symbol for r in db.query(WatchlistTicker).all()}
+    today_iso = datetime.utcnow().strftime("%Y-%m-%d")
+    end_iso = (datetime.utcnow() + timedelta(days=7)).strftime("%Y-%m-%d")
+
+    econ_warning: str | None = None
+    earnings_warning: str | None = None
+
+    try:
+        econ_raw = await finnhub.economic_calendar(days_ahead=1)
+    except RuntimeError as e:
+        econ_raw = []
+        econ_warning = str(e)
+    except Exception as e:
+        econ_raw = []
+        econ_warning = f"Finnhub error: {e}"
+
+    econ = [
+        {
+            "event": e.get("event"),
+            "country": e.get("country"),
+            "time": e.get("time"),
+            "impact": _impact_label(e.get("impact")),
+            "actual": e.get("actual"),
+            "estimate": e.get("estimate"),
+            "previous": e.get("prev"),
+            "unit": e.get("unit"),
+        }
+        for e in econ_raw
+        if e.get("country") == "US"
+        and (e.get("time", "")[:10] == today_iso if e.get("time") else False)
+    ]
+
+    try:
+        earn_raw = await finnhub.earnings_calendar(days_ahead=7)
+    except RuntimeError as e:
+        earn_raw = []
+        earnings_warning = str(e)
+    except Exception as e:
+        earn_raw = []
+        earnings_warning = f"Finnhub error: {e}"
+
+    earnings = []
+    for e in earn_raw:
+        sym = (e.get("symbol") or "").upper()
+        if sym not in watchlist:
+            continue
+        d = e.get("date")
+        if d and d > end_iso:
+            continue
+        earnings.append(
+            {
+                "symbol": sym,
+                "date": d,
+                "hour": e.get("hour"),  # bmo / amc
+                "eps_estimate": e.get("epsEstimate"),
+                "eps_actual": e.get("epsActual"),
+            }
+        )
+    earnings.sort(key=lambda x: x.get("date") or "")
+
+    return {
+        "econ": econ,
+        "earnings": earnings,
+        "econ_warning": econ_warning,
+        "earnings_warning": earnings_warning,
+    }

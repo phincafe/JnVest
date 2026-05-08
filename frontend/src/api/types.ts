@@ -126,6 +126,32 @@ export type ExpirationsResponse = {
   expirations: string[];
 };
 
+export type EconEvent = {
+  event: string;
+  country: string;
+  time: string | null;
+  impact: "high" | "medium" | "low";
+  actual: string | number | null;
+  estimate: string | number | null;
+  previous: string | number | null;
+  unit: string | null;
+};
+
+export type EarningsEvent = {
+  symbol: string;
+  date: string;
+  hour: string | null;
+  eps_estimate: number | null;
+  eps_actual: number | null;
+};
+
+export type CalendarResponse = {
+  econ: EconEvent[];
+  earnings: EarningsEvent[];
+  econ_warning: string | null;
+  earnings_warning: string | null;
+};
+
 export type StockFundamentals = {
   symbol: string;
   next_earnings: string | null;
