@@ -2,7 +2,7 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,7 +12,8 @@ from pydantic import BaseModel
 from .config import get_settings
 from .db import Base, SessionLocal, engine
 from .models import WatchlistTicker
-from .routers import market
+from .routers import market, watchlist
+from .services import streamer
 
 DEFAULT_WATCHLIST = ["AAPL", "NVDA", "TSLA", "SPY", "QQQ"]
 
@@ -113,6 +114,26 @@ async def health() -> dict:
 
 
 app.include_router(market.router, prefix="/api")
+app.include_router(watchlist.router, prefix="/api")
+
+
+@app.websocket("/api/ws")
+async def ws_endpoint(websocket: WebSocket) -> None:
+    # Auth via the same session cookie used by REST.
+    if not _is_authed(websocket):  # type: ignore[arg-type]
+        await websocket.close(code=4401)
+        return
+    await websocket.accept()
+    await streamer.register_client(websocket)
+    try:
+        while True:
+            # We don't process inbound client messages, but reading keeps the
+            # connection alive and detects disconnects.
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await streamer.unregister_client(websocket)
 
 
 # --- Static frontend (production only) ---

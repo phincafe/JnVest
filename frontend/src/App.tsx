@@ -4,11 +4,13 @@ import { api } from "./api/client";
 import type { AuthStatus } from "./api/types";
 import { Login } from "./components/Login";
 import { MarketContext } from "./components/MarketContext";
+import { Watchlist } from "./components/Watchlist";
 
 export function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [isPaper, setIsPaper] = useState(true);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
 
   const refreshAuth = useCallback(async () => {
     try {
@@ -59,6 +61,11 @@ export function App() {
       </header>
       <main className="mx-auto max-w-7xl space-y-6 px-4 py-4">
         <MarketContext refreshNonce={refreshNonce} />
+        <Watchlist
+          refreshNonce={refreshNonce}
+          selected={selectedSymbol}
+          onSelect={setSelectedSymbol}
+        />
         <ApiBanner />
       </main>
     </div>
