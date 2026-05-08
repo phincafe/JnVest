@@ -5,6 +5,8 @@ import type { AuthStatus } from "./api/types";
 import { Calendar } from "./components/Calendar";
 import { Login } from "./components/Login";
 import { MarketContext } from "./components/MarketContext";
+import { OrderTicket } from "./components/OrderTicket";
+import { Positions } from "./components/Positions";
 import { StockDetail } from "./components/StockDetail";
 import { Watchlist } from "./components/Watchlist";
 
@@ -70,6 +72,11 @@ export function App() {
         />
         <StockDetail symbol={selectedSymbol} />
         <Calendar refreshNonce={refreshNonce} />
+        <Positions refreshNonce={refreshNonce} />
+        <OrderTicket
+          isPaper={isPaper}
+          onSubmitted={() => setRefreshNonce((n) => n + 1)}
+        />
         <ApiBanner />
       </main>
     </div>

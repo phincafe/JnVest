@@ -152,6 +152,60 @@ export type CalendarResponse = {
   earnings_warning: string | null;
 };
 
+export type AccountSummary = {
+  equity: number;
+  last_equity: number;
+  cash: number;
+  buying_power: number;
+  long_market_value: number;
+  short_market_value: number;
+  today_pl: number;
+  today_pl_pct: number;
+  is_paper: boolean;
+};
+
+export type AlpacaPosition = {
+  symbol: string;
+  asset_class: string;
+  qty: number;
+  side: string;
+  avg_entry_price: number;
+  market_value: number;
+  current_price: number;
+  unrealized_pl: number;
+  unrealized_plpc: number;
+  unrealized_intraday_pl: number;
+};
+
+export type AlpacaOrder = {
+  id: string;
+  symbol: string;
+  side: string;
+  qty: number;
+  filled_qty: number;
+  type: string;
+  limit_price: string | null;
+  status: string;
+  submitted_at: string | null;
+  filled_at: string | null;
+  filled_avg_price: string | null;
+};
+
+export type ManualPosition = {
+  id: number;
+  symbol: string;
+  position_type: "stock" | "call" | "put";
+  entry_price: number;
+  quantity: number;
+  expiration: string | null;
+  strike: number | null;
+  notes: string | null;
+  created_at: string;
+  last_price: number | null;
+  pl: number | null;
+  pl_pct: number | null;
+};
+
 export type StockFundamentals = {
   symbol: string;
   next_earnings: string | null;
