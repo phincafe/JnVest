@@ -66,12 +66,12 @@ async def stock_bars(symbol: str, range: str = Query("1M")) -> dict[str, Any]:
 
 
 @router.get("/{symbol}/news")
-async def stock_news(symbol: str, limit: int = 10) -> dict[str, Any]:
+async def stock_news(symbol: str, limit: int = 10, days_back: int = 30) -> dict[str, Any]:
     try:
-        items = await finnhub.company_news(symbol.upper())
+        items = await finnhub.company_news(symbol.upper(), days_back=days_back)
     except RuntimeError as e:
         # FINNHUB_API_KEY missing — surface nicely instead of 500.
-        return {"items": [], "warning": str(e)}
+        return {"items": [], "warning": str(e), "days_back": days_back}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Finnhub error: {e}") from e
 
@@ -86,7 +86,7 @@ async def stock_news(symbol: str, limit: int = 10) -> dict[str, Any]:
                 "ts": it.get("datetime"),
             }
         )
-    return {"items": trimmed}
+    return {"items": trimmed, "days_back": days_back}
 
 
 @router.get("/{symbol}/insider")

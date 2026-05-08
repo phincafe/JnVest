@@ -19,8 +19,10 @@ def _key() -> str:
     return k
 
 
-async def company_news(symbol: str, days_back: int = 7) -> list[dict[str, Any]]:
-    """Recent company news. Finnhub returns full articles; we trim downstream."""
+async def company_news(symbol: str, days_back: int = 30) -> list[dict[str, Any]]:
+    """Recent company news. Finnhub returns full articles; we trim downstream.
+    Default 30 days because thinly-covered small/mid-caps may go a week between
+    headlines."""
 
     async def fetch() -> list[dict[str, Any]]:
         to = datetime.utcnow().date()

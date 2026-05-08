@@ -82,6 +82,7 @@ export type NewsItem = {
 export type StockNewsResponse = {
   items: NewsItem[];
   warning?: string;
+  days_back?: number;
 };
 
 export type IvSummary = {

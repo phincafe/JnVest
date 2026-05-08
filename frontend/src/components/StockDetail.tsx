@@ -264,7 +264,10 @@ function NewsCard({ news }: { news: StockNewsResponse | null }) {
       ) : news.warning ? (
         <p className="text-sm text-(--color-text-dim)">{news.warning}</p>
       ) : news.items.length === 0 ? (
-        <p className="text-sm text-(--color-text-dim)">No recent headlines.</p>
+        <p className="text-sm text-(--color-text-dim)">
+          No headlines in the last {news.days_back ?? 30} days. Thinly-covered
+          small/mid-caps often go quiet between earnings.
+        </p>
       ) : (
         <ul className="space-y-3">
           {news.items.map((item, i) => (
