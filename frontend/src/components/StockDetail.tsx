@@ -8,6 +8,7 @@ import type {
 } from "../api/types";
 import { fmtPrice } from "../lib/format";
 import { CandlestickChart } from "./CandlestickChart";
+import { OptionsPanel } from "./OptionsPanel";
 import { Skeleton } from "./Skeleton";
 
 const RANGES = ["1D", "5D", "1M", "6M", "1Y"] as const;
@@ -106,6 +107,8 @@ export function StockDetail({ symbol }: Props) {
         <FundamentalsCard fund={fund} />
         <NewsCard news={news} />
       </div>
+
+      <OptionsPanel symbol={symbol} />
     </section>
   );
 }

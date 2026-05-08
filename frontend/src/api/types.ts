@@ -84,6 +84,48 @@ export type StockNewsResponse = {
   warning?: string;
 };
 
+export type IvSummary = {
+  symbol: string;
+  spot: number;
+  atm_iv: number | null;
+  iv_rank: number | null;
+  iv_percentile: number | null;
+  history_days: number;
+  term_structure: { expiration: string; atm_iv: number; atm_strike: number }[];
+  skew: { strike: number; iv: number }[];
+};
+
+export type OptionRow = {
+  strike: number;
+  bid: number;
+  ask: number;
+  last: number | null;
+  volume: number;
+  open_interest: number;
+  iv: number;
+  delta: number | null;
+  gamma: number | null;
+  theta: number | null;
+  vega: number | null;
+  spread_pct: number | null;
+  unusual_volume: boolean;
+  in_the_money: boolean;
+};
+
+export type ChainResponse = {
+  symbol: string;
+  expiration: string;
+  spot: number;
+  days_to_exp: number;
+  calls: OptionRow[];
+  puts: OptionRow[];
+};
+
+export type ExpirationsResponse = {
+  symbol: string;
+  expirations: string[];
+};
+
 export type StockFundamentals = {
   symbol: string;
   next_earnings: string | null;
