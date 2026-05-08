@@ -74,6 +74,11 @@ async def iv_summary(symbol: str, db: Session = Depends(get_db)) -> dict[str, An
             "term_structure": [],
             "skew": [],
             "spot": spot,
+            "warning": (
+                "Yahoo Finance returned no option expirations for this ticker. "
+                "Either the symbol has no listed options, or yfinance is being "
+                "rate-limited from the server's IP."
+            ),
         }
 
     # Term structure: ATM IV across expirations.
@@ -136,6 +141,9 @@ async def iv_summary(symbol: str, db: Session = Depends(get_db)) -> dict[str, An
         "history_days": len(history),
         "term_structure": term,
         "skew": skew,
+        "warning": (
+            None if term else "Yahoo returned no IV data for any expiration (likely rate-limited)."
+        ),
     }
 
 

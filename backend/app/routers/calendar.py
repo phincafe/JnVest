@@ -32,7 +32,7 @@ async def today(db: Session = Depends(get_db)) -> dict[str, Any]:
     earnings_warning: str | None = None
 
     try:
-        econ_raw = await finnhub.economic_calendar(days_ahead=1)
+        econ_raw = await finnhub.economic_calendar(days_ahead=7)
     except RuntimeError as e:
         econ_raw = []
         econ_warning = str(e)
@@ -40,21 +40,32 @@ async def today(db: Session = Depends(get_db)) -> dict[str, Any]:
         econ_raw = []
         econ_warning = f"Finnhub error: {e}"
 
-    econ = [
-        {
-            "event": e.get("event"),
-            "country": e.get("country"),
-            "time": e.get("time"),
-            "impact": _impact_label(e.get("impact")),
-            "actual": e.get("actual"),
-            "estimate": e.get("estimate"),
-            "previous": e.get("prev"),
-            "unit": e.get("unit"),
-        }
-        for e in econ_raw
-        if e.get("country") == "US"
-        and (e.get("time", "")[:10] == today_iso if e.get("time") else False)
-    ]
+    # US-only, next 7 days, prefer high+medium impact (low impact floods the list).
+    econ = []
+    for e in econ_raw:
+        if e.get("country") != "US":
+            continue
+        when = (e.get("time") or "")[:10]
+        if not when or when < today_iso or when > end_iso:
+            continue
+        impact = _impact_label(e.get("impact"))
+        if impact == "low" and when != today_iso:
+            # Show low-impact only for today; otherwise the 7-day list is too noisy.
+            continue
+        econ.append(
+            {
+                "event": e.get("event"),
+                "country": e.get("country"),
+                "time": e.get("time"),
+                "date": when,
+                "impact": impact,
+                "actual": e.get("actual"),
+                "estimate": e.get("estimate"),
+                "previous": e.get("prev"),
+                "unit": e.get("unit"),
+            }
+        )
+    econ.sort(key=lambda x: (x.get("time") or ""))
 
     try:
         earn_raw = await finnhub.earnings_calendar(days_ahead=7)

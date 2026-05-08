@@ -9,47 +9,64 @@ import type {
   SnapTradeOrder,
   SnapTradeStock,
 } from "../api/types";
+import { useCachedFetch, clearCacheKey } from "../hooks/useCachedFetch";
 import { changeClass, fmtPct, fmtPrice } from "../lib/format";
 import { Skeleton } from "./Skeleton";
 
 const REFRESH_MS = 5 * 60_000;
 
 export function SnapTradePanel({ refreshNonce }: { refreshNonce: number }) {
-  const [auths, setAuths] = useState<SnapTradeAuthorization[] | null>(null);
-  const [holdings, setHoldings] = useState<SnapTradeHoldings | null>(null);
-  const [err, setErr] = useState<string | null>(null);
   const [needsCfg, setNeedsCfg] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("all");
 
-  const load = useCallback(async () => {
-    try {
-      const [a, h] = await Promise.all([
-        api.get<{ authorizations: SnapTradeAuthorization[] }>(
-          "/snaptrade/authorizations",
-        ),
-        api.get<SnapTradeHoldings>("/snaptrade/holdings"),
-      ]);
-      setAuths(a.authorizations);
-      setHoldings(h);
-      setErr(null);
-      setNeedsCfg(false);
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 400) {
-        setNeedsCfg(true);
-        setAuths([]);
-        setHoldings(null);
-      } else {
-        setErr(e instanceof ApiError ? e.detail : (e as Error).message);
-      }
-    }
-  }, []);
+  // Stale-while-revalidate caches keep data on screen across tab switches and
+  // refreshNonce bumps. The skeleton only shows on the very first load.
+  const authsCache = useCachedFetch<{ authorizations: SnapTradeAuthorization[] }>(
+    "snaptrade:auths",
+    () => api.get("/snaptrade/authorizations"),
+    { refreshMs: REFRESH_MS, staleAfterMs: 60_000 },
+  );
+  const holdingsCache = useCachedFetch<SnapTradeHoldings>(
+    "snaptrade:holdings",
+    () => api.get("/snaptrade/holdings"),
+    { refreshMs: REFRESH_MS, staleAfterMs: 60_000 },
+  );
 
+  const auths = authsCache.data?.authorizations ?? null;
+  const holdings = holdingsCache.data;
+  const loadingFirst =
+    !holdings && (holdingsCache.isFetching || authsCache.isFetching);
+  const isRefreshing = holdingsCache.isFetching || authsCache.isFetching;
+
+  // Detect "not configured" 400 from any of the underlying calls.
   useEffect(() => {
-    load();
-    const id = setInterval(load, REFRESH_MS);
-    return () => clearInterval(id);
-  }, [load, refreshNonce]);
+    const errMsg = holdingsCache.error || authsCache.error;
+    if (errMsg && errMsg.includes("not configured")) {
+      setNeedsCfg(true);
+      setErr(null);
+    } else if (errMsg) {
+      setErr(errMsg);
+    } else {
+      setErr(null);
+    }
+  }, [holdingsCache.error, authsCache.error]);
+
+  // External "refresh" button bumps refreshNonce; force a cache invalidation.
+  useEffect(() => {
+    if (refreshNonce === 0) return;
+    clearCacheKey("snaptrade:auths");
+    clearCacheKey("snaptrade:holdings");
+    authsCache.refetch();
+    holdingsCache.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshNonce]);
+
+  const load = useCallback(() => {
+    authsCache.refetch();
+    holdingsCache.refetch();
+  }, [authsCache, holdingsCache]);
 
   const connect = async () => {
     setBusy(true);
@@ -115,8 +132,10 @@ export function SnapTradePanel({ refreshNonce }: { refreshNonce: number }) {
             disabled={busy}
             className="flex items-center gap-1 rounded-md border border-(--color-border) px-2 py-1 text-xs text-(--color-text-dim) hover:text-(--color-text)"
             aria-label="Refresh"
+            title={isRefreshing ? "Refreshing in background…" : "Refresh now"}
           >
-            <RefreshCcw size={12} /> Refresh
+            <RefreshCcw size={12} className={isRefreshing ? "animate-spin" : ""} />{" "}
+            Refresh
           </button>
           <button
             onClick={connect}
@@ -159,7 +178,9 @@ export function SnapTradePanel({ refreshNonce }: { refreshNonce: number }) {
 
       {!needsCfg && (
         <>
-          {auths === null ? (
+          {loadingFirst && auths === null ? (
+            <Skeleton className="h-20" />
+          ) : auths === null ? (
             <Skeleton className="h-20" />
           ) : auths.length === 0 ? (
             <div className="rounded-xl border border-dashed border-(--color-border) bg-(--color-panel) p-6 text-center text-sm text-(--color-text-dim)">

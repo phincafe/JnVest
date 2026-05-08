@@ -94,6 +94,12 @@ export function OptionsPanel({ symbol }: Props) {
     <section className="space-y-3">
       <h3 className="text-sm font-medium text-(--color-text-dim)">Options</h3>
 
+      {iv?.warning && (
+        <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 p-2 text-xs text-yellow-200">
+          {iv.warning}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         <IvSummaryCard iv={iv} />
         <TermStructureCard iv={iv} />

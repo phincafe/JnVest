@@ -93,6 +93,7 @@ export type IvSummary = {
   history_days: number;
   term_structure: { expiration: string; atm_iv: number; atm_strike: number }[];
   skew: { strike: number; iv: number }[];
+  warning?: string | null;
 };
 
 export type OptionRow = {
@@ -130,6 +131,7 @@ export type EconEvent = {
   event: string;
   country: string;
   time: string | null;
+  date?: string | null;
   impact: "high" | "medium" | "low";
   actual: string | number | null;
   estimate: string | number | null;

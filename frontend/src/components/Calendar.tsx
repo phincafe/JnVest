@@ -55,46 +55,88 @@ export function Calendar({ refreshNonce }: { refreshNonce: number }) {
   );
 }
 
+function dayLabel(iso: string | undefined | null): string {
+  if (!iso) return "—";
+  const today = new Date();
+  const todayIso = today.toISOString().slice(0, 10);
+  if (iso === todayIso) return "Today";
+  const tomorrow = new Date(today.getTime() + 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  if (iso === tomorrow) return "Tomorrow";
+  try {
+    return new Date(iso + "T00:00:00").toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 function EconCard({ data }: { data: CalendarResponse | null }) {
   return (
     <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
       <h3 className="mb-3 text-xs uppercase tracking-wide text-(--color-text-dim)">
-        Today's US economic releases
+        US economic releases (next 7d, high+medium impact)
       </h3>
       {!data ? (
         <Skeleton className="h-24 w-full" />
       ) : data.econ_warning ? (
         <p className="text-sm text-(--color-text-dim)">{data.econ_warning}</p>
       ) : data.econ.length === 0 ? (
-        <p className="text-sm text-(--color-text-dim)">Nothing scheduled today.</p>
+        <p className="text-sm text-(--color-text-dim)">
+          No high/medium-impact US events in the next 7 days.
+        </p>
       ) : (
-        <ul className="space-y-2">
-          {data.econ.map((e, i) => (
-            <li key={i} className="flex items-start justify-between gap-3 text-sm">
-              <div>
-                <div className="font-medium">{e.event}</div>
-                <div className="text-xs text-(--color-text-dim) tabular-nums">
-                  {e.time?.slice(11, 16)} · est {e.estimate ?? "—"}
-                  {e.unit ? e.unit : ""} · prev {e.previous ?? "—"}
-                  {e.unit ? e.unit : ""}
-                  {e.actual != null && (
-                    <>
-                      {" · "}
-                      <span className="text-(--color-text)">
-                        actual {e.actual}
-                        {e.unit ? e.unit : ""}
-                      </span>
-                    </>
-                  )}
+        <ul className="space-y-3">
+          {(() => {
+            const groups: Record<string, typeof data.econ> = {};
+            for (const e of data.econ) {
+              const k = e.date ?? e.time?.slice(0, 10) ?? "";
+              groups[k] ??= [];
+              groups[k].push(e);
+            }
+            return Object.entries(groups).map(([day, events]) => (
+              <li key={day}>
+                <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-(--color-text-dim)">
+                  {dayLabel(day)}
                 </div>
-              </div>
-              <span
-                className={`rounded px-1.5 py-0.5 text-[10px] uppercase ${IMPACT_CLASS[e.impact] ?? ""}`}
-              >
-                {e.impact}
-              </span>
-            </li>
-          ))}
+                <ul className="space-y-1.5">
+                  {events.map((e, i) => (
+                    <li
+                      key={i}
+                      className="flex items-start justify-between gap-3 text-sm"
+                    >
+                      <div>
+                        <div className="font-medium">{e.event}</div>
+                        <div className="text-xs text-(--color-text-dim) tabular-nums">
+                          {e.time?.slice(11, 16)} · est {e.estimate ?? "—"}
+                          {e.unit ?? ""} · prev {e.previous ?? "—"}
+                          {e.unit ?? ""}
+                          {e.actual != null && (
+                            <>
+                              {" · "}
+                              <span className="text-(--color-text)">
+                                actual {e.actual}
+                                {e.unit ?? ""}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <span
+                        className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase ${IMPACT_CLASS[e.impact] ?? ""}`}
+                      >
+                        {e.impact}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ));
+          })()}
         </ul>
       )}
     </div>
