@@ -440,7 +440,45 @@ def get_holdings(request: Request, db: Session = Depends(get_db)) -> dict[str, A
 
     if is_guest(request):
         return _consolidate_for_guest(flat)
+
+    # Owner-only side effect: keep watchlist in sync with held tickers + option
+    # underlyings. Idempotent — only adds genuinely new ones. Failures here
+    # don't fail the holdings response.
+    try:
+        added = _auto_add_to_watchlist(db, flat)
+        if added:
+            flat["auto_added_to_watchlist"] = added
+    except Exception:
+        pass
     return flat
+
+
+def _auto_add_to_watchlist(db: Session, flat: dict[str, Any]) -> list[str]:
+    """Add every held ticker + option underlying to the watchlist if not already
+    there. Returns the list of newly-added symbols. Idempotent."""
+    tickers: set[str] = set()
+    for s in flat["positions"]:
+        t = s.get("ticker")
+        q = s.get("quantity") or 0
+        if t and q > 0:
+            tickers.add(t.upper())
+    for o in flat["options"]:
+        u = o.get("underlying")
+        if u:
+            tickers.add(u.upper())
+    if not tickers:
+        return []
+    existing = {r.symbol for r in db.query(WatchlistTicker).all()}
+    new_syms = sorted(tickers - existing)
+    if not new_syms:
+        return []
+    next_order = db.query(WatchlistTicker).order_by(WatchlistTicker.sort_order.desc()).first()
+    base_order = (next_order.sort_order + 1) if next_order else 0
+    for i, sym in enumerate(new_syms):
+        db.add(WatchlistTicker(symbol=sym, sort_order=base_order + i))
+    db.commit()
+    streamer.notify_watchlist_changed()
+    return new_syms
 
 
 class NicknameIn(BaseModel):
@@ -476,8 +514,8 @@ def clear_nickname(account_id: str, db: Session = Depends(get_db)) -> dict[str, 
 
 @router.post("/sync-watchlist")
 def sync_to_watchlist(db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Add every stock + every option underlying you own to the watchlist
-    (skipping ones already there)."""
+    """Manual trigger of the same auto-sync that runs on every /holdings call.
+    Kept as a POST for users who want to force a fresh sync after trading."""
     try:
         user = snaptrade_svc.get_or_create_user(db)
         raw = snaptrade_svc.all_holdings(user)
@@ -487,28 +525,13 @@ def sync_to_watchlist(db: Session = Depends(get_db)) -> dict[str, Any]:
         raise HTTPException(status_code=502, detail=f"SnapTrade error: {e}") from e
 
     flat = _flatten(raw)
-    tickers: set[str] = set()
-    for s in flat["positions"]:
-        if s.get("ticker") and s["quantity"] > 0:
-            tickers.add(s["ticker"].upper())
-    for o in flat["options"]:
-        if o.get("underlying"):
-            tickers.add(o["underlying"].upper())
-
-    existing = {r.symbol for r in db.query(WatchlistTicker).all()}
-    new_syms = sorted(tickers - existing)
-    if not new_syms:
-        return {"added": 0, "skipped_existing": len(tickers & existing), "tickers": []}
-
-    next_order = db.query(WatchlistTicker).order_by(WatchlistTicker.sort_order.desc()).first()
-    base_order = (next_order.sort_order + 1) if next_order else 0
-    for i, sym in enumerate(new_syms):
-        db.add(WatchlistTicker(symbol=sym, sort_order=base_order + i))
-    db.commit()
-    streamer.notify_watchlist_changed()
-
+    new_syms = _auto_add_to_watchlist(db, flat)
+    held_tickers = {s["ticker"].upper() for s in flat["positions"] if s.get("ticker")} | {
+        o["underlying"].upper() for o in flat["options"] if o.get("underlying")
+    }
+    skipped = len(held_tickers - set(new_syms))
     return {
         "added": len(new_syms),
-        "skipped_existing": len(tickers & existing),
+        "skipped_existing": skipped,
         "tickers": new_syms,
     }

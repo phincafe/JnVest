@@ -93,6 +93,21 @@ export function SnapTradePanel({ refreshNonce }: { refreshNonce: number }) {
     }
   };
 
+  // When the backend auto-adds tickers to the watchlist (because new positions
+  // appeared in your accounts), show a small toast so you know about it.
+  const [autoAddedNotice, setAutoAddedNotice] = useState<string | null>(null);
+  useEffect(() => {
+    const added = holdings?.auto_added_to_watchlist;
+    if (added && added.length > 0) {
+      const tail = added.slice(0, 4).join(", ") + (added.length > 4 ? "…" : "");
+      setAutoAddedNotice(
+        `Added ${added.length} new ticker${added.length === 1 ? "" : "s"} to watchlist: ${tail}`,
+      );
+      const id = setTimeout(() => setAutoAddedNotice(null), 8_000);
+      return () => clearTimeout(id);
+    }
+  }, [holdings?.auto_added_to_watchlist]);
+
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const syncToWatchlist = async () => {
     setBusy(true);
@@ -150,6 +165,19 @@ export function SnapTradePanel({ refreshNonce }: { refreshNonce: number }) {
       {syncMsg && (
         <div className="rounded-md border border-(--color-up)/40 bg-(--color-panel-2) p-2 text-xs text-(--color-up)">
           {syncMsg}
+        </div>
+      )}
+
+      {autoAddedNotice && (
+        <div className="flex items-center justify-between rounded-md border border-(--color-accent)/40 bg-(--color-accent)/10 p-2 text-xs text-(--color-accent)">
+          <span>{autoAddedNotice}</span>
+          <button
+            onClick={() => setAutoAddedNotice(null)}
+            className="text-(--color-text-dim) hover:text-(--color-text)"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
         </div>
       )}
 

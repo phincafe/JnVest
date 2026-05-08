@@ -317,6 +317,11 @@ export type SnapTradeHoldings = {
     unrealized_pl: number;
     market_value: number; // legacy alias = equity
   };
+  /** Tickers the backend silently auto-added to the watchlist on this call.
+   * Set when new positions/options appear that aren't yet on the watchlist. */
+  auto_added_to_watchlist?: string[];
+  /** True when the response was redacted for guest viewing. */
+  guest?: boolean;
 };
 
 export type SnapTradeAuthorization = {
