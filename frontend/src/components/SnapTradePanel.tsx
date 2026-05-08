@@ -11,6 +11,7 @@ import type {
 } from "../api/types";
 import { useCachedFetch, clearCacheKey, mutateCache } from "../hooks/useCachedFetch";
 import { changeClass, fmtPct, fmtPrice } from "../lib/format";
+import { GuestPortfolioView } from "./GuestPortfolioView";
 import { Skeleton } from "./Skeleton";
 
 const REFRESH_MS = 5 * 60_000;
@@ -126,6 +127,13 @@ export function SnapTradePanel({ refreshNonce }: { refreshNonce: number }) {
       setBusy(false);
     }
   };
+
+  const isGuest = holdings?.guest === true;
+
+  // Guest view: a different layout entirely. Pie chart + simple weight tables.
+  if (isGuest && holdings) {
+    return <GuestPortfolioView holdings={holdings} />;
+  }
 
   return (
     <section className="space-y-3">

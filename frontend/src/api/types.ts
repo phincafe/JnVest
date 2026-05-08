@@ -266,6 +266,8 @@ export type SnapTradeStock = {
   market_value: number;
   unrealized_pl: number | null;
   unrealized_pl_pct: number | null;
+  /** Set only in guest mode: % of total invested portfolio. */
+  allocation_pct?: number | null;
 };
 
 export type SnapTradeOption = {
@@ -283,6 +285,8 @@ export type SnapTradeOption = {
   market_value: number;
   unrealized_pl: number | null;
   unrealized_pl_pct: number | null;
+  /** Set only in guest mode: % of total invested portfolio. */
+  allocation_pct?: number | null;
 };
 
 export type SnapTradeOrder = {

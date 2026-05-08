@@ -305,38 +305,27 @@ def _consolidate_for_guest(flat: dict[str, Any]) -> dict[str, Any]:
         1.0,
     )
 
-    # ---- Stocks: collapse by ticker ----
-    stock_groups: dict[str, dict[str, Any]] = {}
+    # ---- Stocks: collapse by ticker. Guests see weight only — no P/L. ----
+    stock_groups: dict[str, float] = {}
+    stock_descs: dict[str, str | None] = {}
     for p in flat["positions"]:
         t = p.get("ticker") or "—"
-        g = stock_groups.setdefault(
-            t,
-            {
-                "ticker": t,
-                "description": p.get("description"),
-                "_value": 0.0,
-                "_pl": 0.0,
-                "_cost": 0.0,
-            },
-        )
-        g["_value"] += p.get("market_value") or 0
-        g["_pl"] += p.get("unrealized_pl") or 0
-        if p.get("avg_cost") and p.get("quantity"):
-            g["_cost"] += p["avg_cost"] * p["quantity"]
-    consolidated_stocks = []
-    for g in stock_groups.values():
-        consolidated_stocks.append(
-            {
-                "ticker": g["ticker"],
-                "description": g["description"],
-                "allocation_pct": (g["_value"] / total_invested * 100) if total_invested else None,
-                "unrealized_pl_pct": ((g["_pl"] / g["_cost"] * 100) if g["_cost"] else None),
-            }
-        )
+        stock_groups[t] = stock_groups.get(t, 0.0) + (p.get("market_value") or 0)
+        if t not in stock_descs:
+            stock_descs[t] = p.get("description")
+    consolidated_stocks = [
+        {
+            "ticker": t,
+            "description": stock_descs.get(t),
+            "allocation_pct": (v / total_invested * 100) if total_invested else None,
+        }
+        for t, v in stock_groups.items()
+    ]
     consolidated_stocks.sort(key=lambda x: x.get("allocation_pct") or 0, reverse=True)
 
-    # ---- Options: collapse by contract ----
-    opt_groups: dict[tuple, dict[str, Any]] = {}
+    # ---- Options: collapse by contract. Guests see weight only — no P/L. ----
+    opt_groups: dict[tuple, float] = {}
+    opt_meta: dict[tuple, dict[str, Any]] = {}
     for o in flat["options"]:
         key = (
             o.get("underlying"),
@@ -344,34 +333,21 @@ def _consolidate_for_guest(flat: dict[str, Any]) -> dict[str, Any]:
             o.get("strike"),
             o.get("expiration"),
         )
-        g = opt_groups.setdefault(
-            key,
-            {
+        opt_groups[key] = opt_groups.get(key, 0.0) + (o.get("market_value") or 0)
+        if key not in opt_meta:
+            opt_meta[key] = {
                 "underlying": o.get("underlying"),
                 "option_type": o.get("option_type"),
                 "strike": o.get("strike"),
                 "expiration": o.get("expiration"),
-                "_value": 0.0,
-                "_pl": 0.0,
-                "_cost": 0.0,
-            },
-        )
-        g["_value"] += o.get("market_value") or 0
-        g["_pl"] += o.get("unrealized_pl") or 0
-        if o.get("avg_cost") and o.get("quantity"):
-            g["_cost"] += o["avg_cost"] * o["quantity"] * 100
-    consolidated_options = []
-    for g in opt_groups.values():
-        consolidated_options.append(
-            {
-                "underlying": g["underlying"],
-                "option_type": g["option_type"],
-                "strike": g["strike"],
-                "expiration": g["expiration"],
-                "allocation_pct": (g["_value"] / total_invested * 100) if total_invested else None,
-                "unrealized_pl_pct": ((g["_pl"] / g["_cost"] * 100) if g["_cost"] else None),
             }
-        )
+    consolidated_options = [
+        {
+            **opt_meta[k],
+            "allocation_pct": (v / total_invested * 100) if total_invested else None,
+        }
+        for k, v in opt_groups.items()
+    ]
     consolidated_options.sort(key=lambda x: x.get("allocation_pct") or 0, reverse=True)
 
     # ---- Orders: keep per-row for the activity feed but strip $ + qty ----
