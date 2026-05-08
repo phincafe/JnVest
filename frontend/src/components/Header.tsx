@@ -67,11 +67,7 @@ export function Header({
           )}
         </div>
 
-        {isGuest ? (
-          <div className="text-xs text-(--color-text-dim)">
-            Viewing as guest · $ amounts hidden
-          </div>
-        ) : (
+        {isGuest ? null : (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums sm:gap-x-5 sm:text-sm">
             <Stat label="Equity" value={equity != null ? `$${fmtPrice(equity)}` : "—"} />
             <Stat

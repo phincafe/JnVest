@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import type { SnapTradeHoldings } from "../api/types";
 import { fmtPrice } from "../lib/format";
@@ -10,6 +10,14 @@ type Slice = {
   /** % of the entire portfolio (used in the legend, not the pie). */
   pct_of_portfolio: number;
   /** Owner-mode only: $ market value for this slice. */
+  value?: number;
+};
+
+/** A child row inside a slice — e.g. individual contracts under an underlying. */
+type SliceDetail = {
+  label: string;
+  /** % of the parent slice (sums to 100 within one underlying's contracts). */
+  pct: number;
   value?: number;
 };
 
@@ -119,6 +127,36 @@ export function GuestPortfolioView({
     return bucketLongTail(raw);
   }, [holdings.options, optionPctOfPortfolio, ownerMode]);
 
+  // For each underlying, the list of contracts held — used by the Options
+  // donut to drill in on click/tap (mobile-friendly substitute for hover).
+  const optionContractsByUnderlying = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const o of holdings.options) {
+      const k = o.underlying ?? "—";
+      totals.set(k, (totals.get(k) ?? 0) + (o.market_value || 0));
+    }
+    const out = new Map<string, SliceDetail[]>();
+    for (const o of holdings.options) {
+      const k = o.underlying ?? "—";
+      const total = totals.get(k) ?? 0;
+      const value = o.market_value || 0;
+      const typeChar = o.option_type?.[0]?.toUpperCase() ?? "?";
+      const strike = o.strike != null ? `$${o.strike}` : "?";
+      const exp = o.expiration ?? "";
+      const list = out.get(k) ?? [];
+      list.push({
+        label: `${strike}${typeChar} ${exp}`.trim(),
+        pct: total ? (value / total) * 100 : 0,
+        value: ownerMode ? value : undefined,
+      });
+      out.set(k, list);
+    }
+    for (const list of out.values()) {
+      list.sort((a, b) => (b.value ?? b.pct) - (a.value ?? a.pct));
+    }
+    return out;
+  }, [holdings.options, ownerMode]);
+
   // Aggregate $ totals so card subtitles can show real dollar amounts (owner only).
   const stocksValue = ownerMode
     ? holdings.positions.reduce((s, p) => s + (p.market_value || 0), 0)
@@ -162,6 +200,8 @@ export function GuestPortfolioView({
               slices={optionSlices}
               palette={OPTION_PALETTE}
               showValues={ownerMode}
+              getDetails={(label) => optionContractsByUnderlying.get(label) ?? []}
+              detailsTitle={(label) => `${label} contracts`}
             />
             <CategoryCard
               title="Stocks"
@@ -401,6 +441,8 @@ function CategoryCard({
   slices,
   palette,
   showValues = false,
+  getDetails,
+  detailsTitle,
 }: {
   title: string;
   subtitle: string;
@@ -408,7 +450,20 @@ function CategoryCard({
   palette: string[];
   /** Owner-only: render $ value next to each legend row + in tooltip. */
   showValues?: boolean;
+  /** When provided, clicking a slice or legend row opens a detail panel
+   * listing children (e.g. individual contracts under an option underlying).
+   * Return [] to skip — e.g. for "Other (N)" buckets. */
+  getDetails?: (label: string) => SliceDetail[];
+  detailsTitle?: (label: string) => string;
 }) {
+  const [activeLabel, setActiveLabel] = useState<string | null>(null);
+  const activeDetails = activeLabel && getDetails ? getDetails(activeLabel) : [];
+  const interactive = !!getDetails;
+  const toggle = (label: string) => {
+    if (!getDetails) return;
+    setActiveLabel((prev) => (prev === label ? null : label));
+  };
+
   if (slices.length === 0) {
     return (
       <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
@@ -445,13 +500,18 @@ function CategoryCard({
                 outerRadius={85}
                 paddingAngle={1}
                 isAnimationActive={false}
+                onClick={(_d, idx) => {
+                  const label = slices[idx as number]?.label;
+                  if (label) toggle(label);
+                }}
+                style={interactive ? { cursor: "pointer" } : undefined}
               >
-                {slices.map((_, i) => (
+                {slices.map((s, i) => (
                   <Cell
                     key={i}
                     fill={palette[i % palette.length]}
-                    stroke="#131722"
-                    strokeWidth={1}
+                    stroke={activeLabel === s.label ? "#fff" : "#131722"}
+                    strokeWidth={activeLabel === s.label ? 2 : 1}
                   />
                 ))}
               </Pie>
@@ -477,7 +537,13 @@ function CategoryCard({
 
         <ul className="max-h-56 space-y-1.5 overflow-auto text-xs">
           {slices.slice(0, 12).map((s, i) => (
-            <li key={i} className="flex items-center justify-between gap-2">
+            <li
+              key={i}
+              onClick={() => toggle(s.label)}
+              className={`flex items-center justify-between gap-2 rounded px-1 py-0.5 ${
+                interactive ? "cursor-pointer hover:bg-(--color-panel-2)" : ""
+              } ${activeLabel === s.label ? "bg-(--color-panel-2)" : ""}`}
+            >
               <span className="flex min-w-0 items-center gap-2">
                 <span
                   className="h-2.5 w-2.5 shrink-0 rounded-sm"
@@ -495,6 +561,37 @@ function CategoryCard({
           ))}
         </ul>
       </div>
+
+      {activeLabel && activeDetails.length > 0 && (
+        <div className="mt-3 rounded-lg border border-(--color-border) bg-(--color-panel-2) p-3">
+          <div className="mb-2 flex items-baseline justify-between gap-2">
+            <span className="text-xs font-medium">
+              {detailsTitle ? detailsTitle(activeLabel) : activeLabel}
+            </span>
+            <button
+              type="button"
+              onClick={() => setActiveLabel(null)}
+              className="rounded px-1 text-xs text-(--color-text-dim) hover:bg-(--color-panel)"
+              aria-label="Close details"
+            >
+              ×
+            </button>
+          </div>
+          <ul className="space-y-1 text-xs">
+            {activeDetails.map((d, i) => (
+              <li key={i} className="flex items-baseline justify-between gap-3">
+                <span className="truncate">{d.label}</span>
+                <span className="flex shrink-0 items-baseline gap-2 tabular-nums text-(--color-text-dim)">
+                  {showValues && d.value != null && (
+                    <span className="text-(--color-text)">{fmtCompactUsd(d.value)}</span>
+                  )}
+                  <span>{d.pct.toFixed(1)}%</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
