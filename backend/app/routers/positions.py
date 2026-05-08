@@ -155,9 +155,7 @@ async def list_manual(db: Session = Depends(get_db)) -> list[ManualPositionOut]:
 
 
 @router.post("/manual", response_model=ManualPositionOut)
-def create_manual(
-    payload: ManualPositionIn, db: Session = Depends(get_db)
-) -> ManualPositionOut:
+def create_manual(payload: ManualPositionIn, db: Session = Depends(get_db)) -> ManualPositionOut:
     row = ManualPosition(
         symbol=payload.symbol.upper(),
         position_type=payload.position_type,

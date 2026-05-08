@@ -22,9 +22,7 @@ def put(key: str, value: Any, ttl_seconds: int = 60) -> None:
     _store[key] = (time.time() + ttl_seconds, value)
 
 
-async def aget_or_set(
-    key: str, fetch: Callable[[], Awaitable[Any]], ttl_seconds: int = 60
-) -> Any:
+async def aget_or_set(key: str, fetch: Callable[[], Awaitable[Any]], ttl_seconds: int = 60) -> Any:
     cached = get(key)
     if cached is not None:
         return cached

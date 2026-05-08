@@ -36,13 +36,7 @@ def greeks(
     theta is per-day (divide by 365). vega is per 1.00 vol-point (so multiply by 0.01
     if you want per 1% vol move).
     """
-    if (
-        spot <= 0
-        or strike <= 0
-        or iv <= 0
-        or days_to_exp <= 0
-        or not (0 < iv < 5)
-    ):
+    if spot <= 0 or strike <= 0 or iv <= 0 or days_to_exp <= 0 or not (0 < iv < 5):
         return None
     T = days_to_exp / DAYS_PER_YEAR
     sigma = iv

@@ -46,8 +46,7 @@ def current_watchlist_symbols() -> list[str]:
     db = SessionLocal()
     try:
         return [
-            r.symbol
-            for r in db.query(WatchlistTicker).order_by(WatchlistTicker.sort_order).all()
+            r.symbol for r in db.query(WatchlistTicker).order_by(WatchlistTicker.sort_order).all()
         ]
     finally:
         db.close()

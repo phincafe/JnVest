@@ -29,14 +29,10 @@ async def stock_bars(symbol: str, range: str = Query("1M")) -> dict[str, Any]:
     # For SMAs to be meaningful we need at least 200 prior closes; pull extra
     # for daily ranges. For intraday ranges we just show in-view SMAs.
     extra_days = 0 if "Day" not in timeframe else 250
-    start = (datetime.utcnow() - timedelta(days=lookback_days + extra_days)).strftime(
-        "%Y-%m-%d"
-    )
+    start = (datetime.utcnow() - timedelta(days=lookback_days + extra_days)).strftime("%Y-%m-%d")
 
     try:
-        bars = await alpaca.bars(
-            symbol.upper(), timeframe=timeframe, start=start, limit=10000
-        )
+        bars = await alpaca.bars(symbol.upper(), timeframe=timeframe, start=start, limit=10000)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
 

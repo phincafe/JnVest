@@ -81,9 +81,7 @@ async def option_chain(symbol: str, expiration: str) -> dict[str, list[dict[str,
 
         return await asyncio.to_thread(_sync)
 
-    return await cache.aget_or_set(
-        f"yahoo-chain:{symbol}:{expiration}", fetch, ttl_seconds=60
-    )
+    return await cache.aget_or_set(f"yahoo-chain:{symbol}:{expiration}", fetch, ttl_seconds=60)
 
 
 def _coerce(v: Any) -> Any:

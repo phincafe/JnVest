@@ -40,10 +40,7 @@ def _save_iv_snapshot(db: Session, symbol: str, atm_iv: float) -> None:
 
 def _iv_history(db: Session, symbol: str) -> list[float]:
     rows = (
-        db.query(IVHistory)
-        .filter(IVHistory.symbol == symbol)
-        .order_by(IVHistory.as_of_date)
-        .all()
+        db.query(IVHistory).filter(IVHistory.symbol == symbol).order_by(IVHistory.as_of_date).all()
     )
     return [r.atm_iv for r in rows]
 
@@ -146,7 +143,9 @@ def _enrich_row(
     row: dict[str, Any], spot: float, days_to_exp: float, is_call: bool
 ) -> dict[str, Any]:
     iv = row.get("impliedVolatility") or 0.0
-    g = greeks(spot=spot, strike=float(row["strike"]), iv=iv, days_to_exp=days_to_exp, is_call=is_call)
+    g = greeks(
+        spot=spot, strike=float(row["strike"]), iv=iv, days_to_exp=days_to_exp, is_call=is_call
+    )
     bid = row.get("bid") or 0.0
     ask = row.get("ask") or 0.0
     mid = (bid + ask) / 2.0 if bid and ask else None

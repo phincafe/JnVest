@@ -35,9 +35,7 @@ def add_ticker(payload: TickerIn, db: Session = Depends(get_db)) -> TickerOut:
     existing = db.query(WatchlistTicker).filter(WatchlistTicker.symbol == sym).first()
     if existing:
         return TickerOut(id=existing.id, symbol=existing.symbol, sort_order=existing.sort_order)
-    next_order = (
-        db.query(WatchlistTicker).order_by(WatchlistTicker.sort_order.desc()).first()
-    )
+    next_order = db.query(WatchlistTicker).order_by(WatchlistTicker.sort_order.desc()).first()
     sort_order = (next_order.sort_order + 1) if next_order else 0
     row = WatchlistTicker(symbol=sym, sort_order=sort_order)
     db.add(row)
@@ -74,9 +72,7 @@ def _enrich(symbol: str, bars: list[dict[str, Any]], trade: dict[str, Any]) -> d
     low_52w = min(closes[-252:]) if closes else None
 
     vol = float(bars[-1]["v"]) if bars else 0.0
-    avg_vol_30 = (
-        sum(b["v"] for b in bars[-30:]) / min(30, len(bars[-30:])) if bars else 0.0
-    )
+    avg_vol_30 = sum(b["v"] for b in bars[-30:]) / min(30, len(bars[-30:])) if bars else 0.0
 
     return {
         "symbol": symbol,

@@ -19,9 +19,26 @@ def test_sma_period_too_long():
 def test_rsi_classic_example():
     # Wilder's textbook 14-period example values (Cutler-style would differ).
     closes = [
-        44.34, 44.09, 44.15, 43.61, 44.33, 44.83, 45.10, 45.42,
-        45.84, 46.08, 45.89, 46.03, 45.61, 46.28, 46.28, 46.00,
-        46.03, 46.41, 46.22, 45.64,
+        44.34,
+        44.09,
+        44.15,
+        43.61,
+        44.33,
+        44.83,
+        45.10,
+        45.42,
+        45.84,
+        46.08,
+        45.89,
+        46.03,
+        45.61,
+        46.28,
+        46.28,
+        46.00,
+        46.03,
+        46.41,
+        46.22,
+        45.64,
     ]
     out = rsi(closes, 14)
     # First 14 entries are None (need period+1 prices for first value).

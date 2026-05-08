@@ -9,13 +9,25 @@ router = APIRouter(prefix="/market", tags=["market"])
 INDEX_SYMBOLS = ["SPY", "QQQ", "DIA", "IWM"]
 MACRO_SYMBOLS = ["VIXY", "UUP"]  # IEX-tradable proxies; native ^VIX/^TNX/DXY are off-feed
 SECTOR_SYMBOLS = [
-    "XLK", "XLF", "XLV", "XLY", "XLP", "XLE", "XLI", "XLB", "XLU", "XLRE", "XLC",
+    "XLK",
+    "XLF",
+    "XLV",
+    "XLY",
+    "XLP",
+    "XLE",
+    "XLI",
+    "XLB",
+    "XLU",
+    "XLRE",
+    "XLC",
 ]
 
 
 def _quote_tile(symbol: str, trade: dict[str, Any], bars: list[dict[str, Any]]) -> dict[str, Any]:
     last = float(trade.get("p", 0)) if trade else 0.0
-    prev_close = float(bars[-2]["c"]) if len(bars) >= 2 else (float(bars[-1]["c"]) if bars else last)
+    prev_close = (
+        float(bars[-2]["c"]) if len(bars) >= 2 else (float(bars[-1]["c"]) if bars else last)
+    )
     change = last - prev_close
     pct = (change / prev_close * 100.0) if prev_close else 0.0
     return {
@@ -35,10 +47,7 @@ async def indices() -> dict[str, Any]:
         bars = await alpaca.daily_bars(INDEX_SYMBOLS, days=5)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
-    tiles = [
-        _quote_tile(sym, trades.get(sym, {}), bars.get(sym, []))
-        for sym in INDEX_SYMBOLS
-    ]
+    tiles = [_quote_tile(sym, trades.get(sym, {}), bars.get(sym, [])) for sym in INDEX_SYMBOLS]
     return {"tiles": tiles}
 
 
@@ -49,10 +58,7 @@ async def sectors() -> dict[str, Any]:
         bars = await alpaca.daily_bars(SECTOR_SYMBOLS, days=5)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
-    tiles = [
-        _quote_tile(sym, trades.get(sym, {}), bars.get(sym, []))
-        for sym in SECTOR_SYMBOLS
-    ]
+    tiles = [_quote_tile(sym, trades.get(sym, {}), bars.get(sym, [])) for sym in SECTOR_SYMBOLS]
     return {"tiles": tiles}
 
 

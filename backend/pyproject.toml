@@ -48,7 +48,9 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "W"]
-ignore = ["E501"]  # black handles line length
+# B008: FastAPI's Depends() in defaults is the canonical pattern
+# UP007/UP045: keep modern union syntax but allow Optional for SQLAlchemy mapped_column
+ignore = ["E501", "B008"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
