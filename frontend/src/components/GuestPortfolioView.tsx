@@ -71,15 +71,24 @@ export function GuestPortfolioView({
   );
 
   const stockSlices = useMemo(() => {
-    const raw = holdings.positions
-      .filter((p) => (p.allocation_pct ?? 0) > 0)
-      .map<Slice>((p) => ({
-        label: p.ticker ?? "—",
-        pct: stockPctOfPortfolio
-          ? ((p.allocation_pct ?? 0) / stockPctOfPortfolio) * 100
-          : 0,
-        pct_of_portfolio: p.allocation_pct ?? 0,
-        value: ownerMode ? p.market_value : undefined,
+    // Same ticker held across multiple accounts should be one pie slice,
+    // not one per account — same treatment as options below.
+    const groups = new Map<string, { pct: number; value: number }>();
+    for (const p of holdings.positions) {
+      const pct = p.allocation_pct ?? 0;
+      if (pct <= 0) continue;
+      const key = p.ticker ?? "—";
+      const cur = groups.get(key) ?? { pct: 0, value: 0 };
+      cur.pct += pct;
+      cur.value += p.market_value || 0;
+      groups.set(key, cur);
+    }
+    const raw = [...groups.entries()]
+      .map<Slice>(([label, g]) => ({
+        label,
+        pct: stockPctOfPortfolio ? (g.pct / stockPctOfPortfolio) * 100 : 0,
+        pct_of_portfolio: g.pct,
+        value: ownerMode ? g.value : undefined,
       }))
       .sort((a, b) => b.pct - a.pct);
     return bucketLongTail(raw);
