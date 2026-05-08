@@ -1,7 +1,9 @@
+import csv
+import io
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -178,3 +180,128 @@ def delete_manual(position_id: int, db: Session = Depends(get_db)) -> dict[str, 
     if not n:
         raise HTTPException(status_code=404, detail="not found")
     return {"ok": True}
+
+
+# --- CSV import ---------------------------------------------------------------
+
+# Columns we care about, with aliases seen in Robinhood / Schwab-ToS / generic exports.
+_HEADER_ALIASES: dict[str, tuple[str, ...]] = {
+    "symbol": ("symbol", "ticker", "instrument", "symbol/cusip"),
+    "quantity": ("quantity", "qty", "shares", "qty (shares)", "quantity (shares)"),
+    "entry_price": (
+        "average cost",
+        "avg cost",
+        "average price",
+        "avg price",
+        "cost basis per share",
+        "purchase price",
+        "price",
+    ),
+}
+
+
+def _resolve_columns(headers: list[str]) -> dict[str, int | None]:
+    norm = [h.strip().lower() for h in headers]
+    out: dict[str, int | None] = {}
+    for field, aliases in _HEADER_ALIASES.items():
+        idx: int | None = None
+        for alias in aliases:
+            if alias in norm:
+                idx = norm.index(alias)
+                break
+        out[field] = idx
+    return out
+
+
+def _to_float(s: str | None) -> float | None:
+    if s is None:
+        return None
+    s = s.strip().replace("$", "").replace(",", "").replace("(", "-").replace(")", "")
+    if not s or s in ("-", "—", "N/A", "n/a"):
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+@router.post("/manual/import")
+async def import_csv(
+    file: UploadFile = File(...),
+    mode: Literal["replace", "append"] = Form("replace"),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Bulk-create manual positions from a Robinhood / Schwab-ToS / generic CSV.
+
+    `mode=replace` wipes the manual_positions table first (snapshot semantics).
+    `mode=append` adds rows to the existing table.
+
+    Auto-detects common header aliases; rows with no symbol or zero/missing
+    quantity are skipped. Position type defaults to 'stock' (we don't try to
+    parse options chains from broker exports yet).
+    """
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1")
+
+    reader = csv.reader(io.StringIO(text))
+    rows = list(reader)
+    if not rows:
+        raise HTTPException(status_code=400, detail="empty CSV")
+    headers, *data_rows = rows
+
+    cols = _resolve_columns(headers)
+    if cols["symbol"] is None or cols["quantity"] is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Couldn't find symbol / quantity columns. "
+                f"Saw headers: {headers}. "
+                "Expected one of "
+                f"{_HEADER_ALIASES['symbol']} for symbol and "
+                f"{_HEADER_ALIASES['quantity']} for quantity."
+            ),
+        )
+
+    sym_i = cols["symbol"]
+    qty_i = cols["quantity"]
+    price_i = cols["entry_price"]
+
+    if mode == "replace":
+        db.query(ManualPosition).delete()
+
+    imported = 0
+    skipped: list[dict[str, str]] = []
+    for line_no, row in enumerate(data_rows, start=2):
+        if not row or all(not c.strip() for c in row):
+            continue
+        symbol = row[sym_i].strip().upper() if len(row) > sym_i else ""
+        qty = _to_float(row[qty_i] if len(row) > qty_i else None)
+        price = _to_float(row[price_i] if (price_i is not None and len(row) > price_i) else None)
+        if not symbol:
+            skipped.append({"line": str(line_no), "reason": "no symbol"})
+            continue
+        if qty is None or qty == 0:
+            skipped.append({"line": str(line_no), "reason": f"bad/zero quantity for {symbol}"})
+            continue
+        # Entry price is required by our schema; default to 0 if the CSV doesn't have it
+        # (user can edit later). Signals "cost basis unknown".
+        db.add(
+            ManualPosition(
+                symbol=symbol,
+                position_type="stock",
+                entry_price=price if price and price > 0 else 0.01,
+                quantity=qty,
+                notes=(f"Imported from {file.filename or 'CSV'}"),
+            )
+        )
+        imported += 1
+
+    db.commit()
+    return {
+        "imported": imported,
+        "skipped": skipped,
+        "mode": mode,
+    }

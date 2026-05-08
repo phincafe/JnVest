@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { Trash2, Upload } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type {
   AccountSummary,
@@ -216,6 +216,8 @@ function RecentOrdersCard({ rows }: { rows: AlpacaOrder[] | null }) {
   );
 }
 
+const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
+
 function ManualPositionsCard({
   rows,
   onChange,
@@ -224,6 +226,10 @@ function ManualPositionsCard({
   onChange: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [importErr, setImportErr] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const [symbol, setSymbol] = useState("");
   const [type, setType] = useState<"stock" | "call" | "put">("stock");
   const [entry, setEntry] = useState("");
@@ -273,19 +279,100 @@ function ManualPositionsCard({
     }
   };
 
+  const onPickFile = (mode: "replace" | "append") => {
+    const input = fileInputRef.current;
+    if (!input) return;
+    input.dataset.mode = mode;
+    input.click();
+  };
+
+  const onFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const mode = (e.target.dataset.mode as "replace" | "append") ?? "replace";
+    e.target.value = ""; // reset so picking the same file twice still fires
+    if (!file) return;
+    setImporting(true);
+    setImportErr(null);
+    setImportStatus(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("mode", mode);
+      const res = await fetch(`${API_BASE}/positions/manual/import`, {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(body.detail ?? `${res.status}`);
+      }
+      const data = (await res.json()) as {
+        imported: number;
+        skipped: { line: string; reason: string }[];
+        mode: string;
+      };
+      const skipNote = data.skipped.length
+        ? ` · skipped ${data.skipped.length} (${data.skipped.slice(0, 2).map((s) => s.reason).join("; ")}${data.skipped.length > 2 ? "…" : ""})`
+        : "";
+      setImportStatus(`Imported ${data.imported} position${data.imported === 1 ? "" : "s"} (${data.mode})${skipNote}`);
+      onChange();
+    } catch (e) {
+      setImportErr((e as Error).message);
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-xs uppercase tracking-wide text-(--color-text-dim)">
           Manual positions
         </h3>
-        <button
-          onClick={() => setOpen((o) => !o)}
-          className="rounded-md border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-panel-2)"
-        >
-          {open ? "Cancel" : "+ Add"}
-        </button>
+        <div className="flex items-center gap-1">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            onChange={onFileSelected}
+            className="hidden"
+          />
+          <button
+            onClick={() => onPickFile("replace")}
+            disabled={importing}
+            title="Wipe table and import from CSV — broker snapshot semantics"
+            className="flex items-center gap-1 rounded-md border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-panel-2) disabled:opacity-50"
+          >
+            <Upload size={12} /> Import CSV
+          </button>
+          <button
+            onClick={() => onPickFile("append")}
+            disabled={importing}
+            title="Add CSV rows to existing positions"
+            className="rounded-md border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-panel-2) disabled:opacity-50"
+          >
+            +CSV
+          </button>
+          <button
+            onClick={() => setOpen((o) => !o)}
+            className="rounded-md border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-panel-2)"
+          >
+            {open ? "Cancel" : "+ Add"}
+          </button>
+        </div>
       </div>
+
+      {importStatus && (
+        <div className="mb-2 rounded-md border border-(--color-up)/40 bg-(--color-panel-2) p-2 text-xs text-(--color-up)">
+          {importStatus}
+        </div>
+      )}
+      {importErr && (
+        <div className="mb-2 rounded-md border border-(--color-down)/40 bg-(--color-panel-2) p-2 text-xs text-(--color-down)">
+          {importErr}
+        </div>
+      )}
 
       {open && (
         <form onSubmit={submit} className="mb-3 grid grid-cols-2 gap-2 text-xs">
