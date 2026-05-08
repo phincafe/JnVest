@@ -48,6 +48,26 @@ def remove_authorization(authorization_id: str, db: Session = Depends(get_db)) -
     return {"ok": True}
 
 
+def _safe_get(obj: Any, key: str, default: Any = None) -> Any:
+    return obj.get(key, default) if isinstance(obj, dict) else default
+
+
+def _ticker_of(symbol_field: Any) -> str | None:
+    """SnapTrade nests stock tickers as {symbol: {symbol: 'AAPL'}} or sometimes
+    just 'AAPL' or {symbol: 'AAPL'}. Walk a few levels safely."""
+    cur = symbol_field
+    for _ in range(4):
+        if cur is None:
+            return None
+        if isinstance(cur, str):
+            return cur
+        if isinstance(cur, dict):
+            cur = cur.get("symbol")
+            continue
+        return None
+    return None
+
+
 def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
     """Map SnapTrade's per-account holdings into a UI-friendly shape."""
     out_accounts: list[dict[str, Any]] = []
@@ -60,53 +80,39 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
 
     for entry in holdings:
         acct = entry.get("account") or {}
-        acct_id = acct.get("id")
-        acct_name = acct.get("name") or acct.get("number") or "Account"
-        broker = (acct.get("institution_name") or "") if isinstance(acct, dict) else ""
+        acct_id = _safe_get(acct, "id")
+        acct_name = _safe_get(acct, "name") or _safe_get(acct, "number") or "Account"
+        broker = _safe_get(acct, "institution_name") or ""
         balances = entry.get("balances") or []
         bal_total = 0.0
         bal_cash = 0.0
         for b in balances:
-            cur = (b.get("currency") or {}).get("code") if isinstance(b, dict) else None
+            if not isinstance(b, dict):
+                continue
+            cur = _safe_get(b.get("currency"), "code")
             if cur and cur != "USD":
                 continue
             bal_total += float(b.get("buying_power") or 0)
             bal_cash += float(b.get("cash") or 0)
-        # SDK also reports total_value sometimes
-        tv = (
-            float(entry.get("total_value", {}).get("value") or 0)
-            if isinstance(entry.get("total_value"), dict)
-            else 0
-        )
+        tv = float(_safe_get(entry.get("total_value"), "value") or 0)
         total_value += tv or bal_total
         total_cash += bal_cash
 
         for p in entry.get("positions") or []:
+            if not isinstance(p, dict):
+                continue
             sym = p.get("symbol") or {}
-            inner_sym = sym.get("symbol") or {}
-            ticker = (
-                inner_sym.get("symbol") or sym.get("symbol")
-                if isinstance(inner_sym, dict)
-                else None
+            ticker = _ticker_of(sym)
+            description = _safe_get(sym, "description") or _safe_get(
+                _safe_get(sym, "symbol"), "description"
             )
-            ticker = (
-                ticker
-                if isinstance(ticker, str)
-                else (sym.get("symbol") if isinstance(sym.get("symbol"), str) else None)
-            )
-            description = (
-                inner_sym.get("description") if isinstance(inner_sym, dict) else None
-            ) or sym.get("description")
             qty = float(p.get("units") or 0)
             price = float(p.get("price") or 0)
-            avg = (
-                float(p.get("average_purchase_price") or 0)
-                if p.get("average_purchase_price")
-                else None
-            )
+            avg_raw = p.get("average_purchase_price")
+            avg = float(avg_raw) if avg_raw else None
             mkt_val = qty * price
             cost = (qty * avg) if avg else None
-            pl = (mkt_val - cost) if cost is not None else float(p.get("open_pnl") or 0) or None
+            pl = (mkt_val - cost) if cost is not None else (float(p.get("open_pnl") or 0) or None)
             pl_pct = ((mkt_val - cost) / cost * 100.0) if cost else None
             if pl is not None:
                 total_pl += pl
@@ -127,21 +133,16 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
             )
 
         for op in entry.get("option_positions") or []:
+            if not isinstance(op, dict):
+                continue
             sym = op.get("symbol") or {}
-            opt_sym = sym.get("option_symbol") or {}
-            underlying = (
-                (opt_sym.get("underlying_symbol") or {}).get("symbol")
-                if isinstance(opt_sym, dict)
-                else None
-            )
+            opt_sym = _safe_get(sym, "option_symbol") or {}
+            underlying = _ticker_of(_safe_get(opt_sym, "underlying_symbol")) or _ticker_of(sym)
             qty = float(op.get("units") or 0)
-            price = float(op.get("price") or 0) if op.get("price") else 0
-            avg = (
-                float(op.get("average_purchase_price") or 0)
-                if op.get("average_purchase_price")
-                else None
-            )
-            multiplier = 100.0  # standard equity option
+            price = float(op.get("price") or 0)
+            avg_raw = op.get("average_purchase_price")
+            avg = float(avg_raw) if avg_raw else None
+            multiplier = 100.0
             mkt_val = qty * price * multiplier
             cost = (qty * avg * multiplier) if avg else None
             pl = (mkt_val - cost) if cost is not None else None
@@ -154,14 +155,10 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
                     "account": acct_name,
                     "broker": broker,
                     "underlying": underlying,
-                    "ticker": opt_sym.get("ticker") if isinstance(opt_sym, dict) else None,
-                    "option_type": (
-                        opt_sym.get("option_type") if isinstance(opt_sym, dict) else None
-                    ),
-                    "strike": opt_sym.get("strike_price") if isinstance(opt_sym, dict) else None,
-                    "expiration": (
-                        opt_sym.get("expiration_date") if isinstance(opt_sym, dict) else None
-                    ),
+                    "ticker": _safe_get(opt_sym, "ticker"),
+                    "option_type": _safe_get(opt_sym, "option_type"),
+                    "strike": _safe_get(opt_sym, "strike_price"),
+                    "expiration": _safe_get(opt_sym, "expiration_date"),
                     "quantity": qty,
                     "price": price,
                     "avg_cost": avg,
@@ -172,18 +169,13 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
             )
 
         for o in entry.get("orders") or []:
-            sym = o.get("symbol") or {}
-            inner = sym.get("symbol") if isinstance(sym, dict) else None
-            ticker = (
-                inner.get("symbol")
-                if isinstance(inner, dict)
-                else (sym.get("symbol") if isinstance(sym.get("symbol"), str) else None)
-            )
+            if not isinstance(o, dict):
+                continue
             orders.append(
                 {
                     "account": acct_name,
                     "broker": broker,
-                    "ticker": ticker,
+                    "ticker": _ticker_of(o.get("symbol")),
                     "action": o.get("action"),
                     "status": o.get("status"),
                     "total_quantity": o.get("total_quantity"),
@@ -198,9 +190,7 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
                 "id": acct_id,
                 "name": acct_name,
                 "broker": broker,
-                "type": (
-                    acct.get("meta", {}).get("type") if isinstance(acct.get("meta"), dict) else None
-                ),
+                "type": _safe_get(_safe_get(acct, "meta"), "type"),
                 "balance": bal_total or tv,
                 "cash": bal_cash,
             }
