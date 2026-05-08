@@ -1,5 +1,12 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Trash2, X, Wifi, WifiOff } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import { ArrowDown, ArrowUp, Trash2, Wifi, WifiOff, X } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { WatchlistQuotesResponse, WatchlistRow } from "../api/types";
 import { useLiveQuotes, type StreamStatus } from "../hooks/useLiveQuotes";
@@ -63,12 +70,51 @@ function earningsBadge(days: number | null): ReactNode {
   );
 }
 
+type SortKey =
+  | "symbol"
+  | "last"
+  | "change_pct"
+  | "rel_volume"
+  | "rsi14"
+  | "earnings_in_days";
+
 export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
   const [rows, setRows] = useState<WatchlistRow[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [adding, setAdding] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("symbol");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const { quotes: live, status: streamStatus } = useLiveQuotes();
+
+  const sortedRows = useMemo(() => {
+    if (!rows) return null;
+    const cp = [...rows];
+    cp.sort((a, b) => {
+      const av = (a as unknown as Record<string, unknown>)[sortKey];
+      const bv = (b as unknown as Record<string, unknown>)[sortKey];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (typeof av === "string" && typeof bv === "string") {
+        return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      }
+      const na = Number(av);
+      const nb = Number(bv);
+      return sortDir === "asc" ? na - nb : nb - na;
+    });
+    return cp;
+  }, [rows, sortKey, sortDir]);
+
+  const toggleSort = (k: SortKey) => {
+    if (sortKey === k) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(k);
+      // Default to most-useful direction per column
+      setSortDir(k === "symbol" ? "asc" : "desc");
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -165,20 +211,59 @@ export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
         <table className="min-w-full text-sm">
           <thead className="bg-(--color-panel-2) text-xs uppercase text-(--color-text-dim)">
             <tr>
-              <th className="px-3 py-2 text-left">Symbol</th>
-              <th className="px-3 py-2 text-right">Last</th>
-              <th className="px-3 py-2 text-right">Change</th>
-              <th className="px-3 py-2 text-right">Rel Vol</th>
-              <th className="px-3 py-2 text-right">vs 20D</th>
-              <th className="px-3 py-2 text-right">vs 50D</th>
-              <th className="px-3 py-2 text-right">vs 200D</th>
-              <th className="px-3 py-2 text-right">RSI</th>
-              <th className="px-3 py-2 text-left">52W</th>
+              <SortHeader k="symbol" align="left" current={sortKey} dir={sortDir} onClick={toggleSort}>
+                Symbol
+              </SortHeader>
+              <SortHeader k="last" align="right" current={sortKey} dir={sortDir} onClick={toggleSort}>
+                Last
+              </SortHeader>
+              <SortHeader
+                k="change_pct"
+                align="right"
+                current={sortKey}
+                dir={sortDir}
+                onClick={toggleSort}
+                tooltip="Today's percent change vs prior close"
+              >
+                Change
+              </SortHeader>
+              <SortHeader
+                k="rel_volume"
+                align="right"
+                current={sortKey}
+                dir={sortDir}
+                onClick={toggleSort}
+                tooltip="Today's volume / 30-day average. > 1.0 = above-average activity"
+              >
+                Rel Vol
+              </SortHeader>
+              <th className="px-3 py-2 text-right" title="Distance to 20-day SMA">
+                vs 20D
+              </th>
+              <th className="px-3 py-2 text-right" title="Distance to 50-day SMA">
+                vs 50D
+              </th>
+              <th className="px-3 py-2 text-right" title="Distance to 200-day SMA">
+                vs 200D
+              </th>
+              <SortHeader
+                k="rsi14"
+                align="right"
+                current={sortKey}
+                dir={sortDir}
+                onClick={toggleSort}
+                tooltip="RSI(14): >70 overbought, <30 oversold"
+              >
+                RSI
+              </SortHeader>
+              <th className="px-3 py-2 text-left" title="Position within the 52-week trading range">
+                52W
+              </th>
               <th className="px-3 py-2"></th>
             </tr>
           </thead>
           <tbody>
-            {rows === null
+            {sortedRows === null
               ? Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
                     <td colSpan={10} className="px-3 py-2">
@@ -186,7 +271,7 @@ export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
                     </td>
                   </tr>
                 ))
-              : rows.length === 0
+              : sortedRows.length === 0
                 ? (
                     <tr>
                       <td
@@ -197,7 +282,7 @@ export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
                       </td>
                     </tr>
                   )
-                : rows.map((r) => {
+                : sortedRows.map((r) => {
                     const rsiB = rsiBadge(r.rsi14);
                     const isSel = selected === r.symbol;
                     const liveQ = live.get(r.symbol);
@@ -286,5 +371,39 @@ export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
         </table>
       </div>
     </section>
+  );
+}
+
+function SortHeader({
+  k,
+  current,
+  dir,
+  align,
+  onClick,
+  tooltip,
+  children,
+}: {
+  k: SortKey;
+  current: SortKey;
+  dir: "asc" | "desc";
+  align: "left" | "right";
+  onClick: (k: SortKey) => void;
+  tooltip?: string;
+  children: ReactNode;
+}) {
+  const active = current === k;
+  return (
+    <th className={`px-3 py-2 ${align === "right" ? "text-right" : "text-left"}`}>
+      <button
+        onClick={() => onClick(k)}
+        title={tooltip}
+        className={`inline-flex items-center gap-1 ${
+          active ? "text-(--color-text)" : ""
+        } hover:text-(--color-text)`}
+      >
+        <span>{children}</span>
+        {active && (dir === "asc" ? <ArrowUp size={10} /> : <ArrowDown size={10} />)}
+      </button>
+    </th>
   );
 }

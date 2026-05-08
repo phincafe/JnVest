@@ -1,7 +1,8 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { Briefcase, CalendarDays, LineChart, Sun } from "lucide-react";
 import { api } from "./api/client";
-import type { AuthStatus } from "./api/types";
+import type { AuthStatus, WatchlistTicker } from "./api/types";
+import { CommandPalette } from "./components/CommandPalette";
 import { Header } from "./components/Header";
 import { Login } from "./components/Login";
 import { Skeleton } from "./components/Skeleton";
@@ -27,6 +28,9 @@ export function App() {
       ? window.location.hash.replace("#", "") || "morning"
       : "morning",
   );
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [requestedSymbol, setRequestedSymbol] = useState<string | null>(null);
+  const [watchlistSymbols, setWatchlistSymbols] = useState<string[]>([]);
 
   const refreshAuth = useCallback(async () => {
     try {
@@ -48,6 +52,29 @@ export function App() {
     }
   }, [active]);
 
+  // Pull watchlist symbols once authed so the command palette has suggestions.
+  useEffect(() => {
+    if (!authed) return;
+    api
+      .get<WatchlistTicker[]>("/watchlist")
+      .then((rows) => setWatchlistSymbols(rows.map((r) => r.symbol)))
+      .catch(() => {});
+  }, [authed]);
+
+  // Cmd+K / Ctrl+K opens the command palette; ? shows keyboard hints (future).
+  useEffect(() => {
+    if (!authed) return;
+    const onKey = (e: KeyboardEvent) => {
+      const isCmdK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k";
+      if (isCmdK) {
+        e.preventDefault();
+        setPaletteOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [authed]);
+
   const onLogout = useCallback(async () => {
     try {
       await api.post("/auth/logout");
@@ -55,6 +82,11 @@ export function App() {
       setAuthed(false);
     }
   }, []);
+
+  const onPaletteSelect = (sym: string) => {
+    setRequestedSymbol(sym);
+    setActive("watchlist");
+  };
 
   if (authed === null) {
     return (
@@ -72,17 +104,31 @@ export function App() {
         refreshNonce={refreshNonce}
         onRefresh={() => setRefreshNonce((n) => n + 1)}
         onLogout={onLogout}
+        onSearch={() => setPaletteOpen(true)}
       />
       <Tabs tabs={TABS} active={active} onChange={setActive} />
 
       <Suspense fallback={<TabSkeleton />}>
         {active === "morning" && <MorningTab refreshNonce={refreshNonce} />}
-        {active === "watchlist" && <WatchlistTab refreshNonce={refreshNonce} />}
+        {active === "watchlist" && (
+          <WatchlistTab
+            refreshNonce={refreshNonce}
+            requestedSymbol={requestedSymbol}
+            onConsumedRequestedSymbol={() => setRequestedSymbol(null)}
+          />
+        )}
         {active === "portfolio" && <PortfolioTab refreshNonce={refreshNonce} />}
         {active === "calendar" && <CalendarTab refreshNonce={refreshNonce} />}
       </Suspense>
 
       <MobileTabBar tabs={TABS} active={active} onChange={setActive} />
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onSelect={onPaletteSelect}
+        watchlistSymbols={watchlistSymbols}
+      />
     </div>
   );
 }

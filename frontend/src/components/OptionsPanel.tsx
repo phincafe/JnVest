@@ -380,19 +380,35 @@ function SideHeader({
   align: "left" | "right";
   compact: boolean;
 }) {
-  const cols = compact ? ["Bid", "Ask", "Last", "Vol", "IV", "Δ"] : ["Bid", "Ask", "Last", "Vol", "OI", "IV", "Δ", "Θ", "Sprd%"];
-  const headers = align === "right" ? [title, ...cols] : [...cols, title];
-  // The title cell merges via colspan visually; render headers in line.
+  type Col = { label: string; tooltip?: string };
+  const fullCols: Col[] = [
+    { label: "Bid", tooltip: "Highest current buy offer per share" },
+    { label: "Ask", tooltip: "Lowest current sell offer per share" },
+    { label: "Last", tooltip: "Last traded premium per share" },
+    { label: "Vol", tooltip: "Today's contracts traded" },
+    { label: "OI", tooltip: "Open Interest — total contracts outstanding" },
+    { label: "IV", tooltip: "Implied volatility — market's expected price movement" },
+    { label: "Δ", tooltip: "Delta — price change per $1 move in underlying (also approx prob ITM)" },
+    { label: "Θ", tooltip: "Theta — daily premium decay (negative for long options)" },
+    { label: "Sprd%", tooltip: "Bid-ask spread as % of mid — wider = worse liquidity" },
+  ];
+  const compactCols = fullCols.filter((c) => !["OI", "Θ", "Sprd%"].includes(c.label));
+  const cols = compact ? compactCols : fullCols;
+  const headers: Array<Col | string> = align === "right" ? [title, ...cols] : [...cols, title];
   return (
     <>
-      {headers.map((h, i) => (
-        <th
-          key={`${align}-${i}`}
-          className={`px-2 py-2 ${align === "right" ? "text-right" : "text-left"} font-medium`}
-        >
-          {h}
-        </th>
-      ))}
+      {headers.map((h, i) => {
+        const isStr = typeof h === "string";
+        return (
+          <th
+            key={`${align}-${i}`}
+            title={isStr ? undefined : h.tooltip}
+            className={`px-2 py-2 ${align === "right" ? "text-right" : "text-left"} font-medium`}
+          >
+            {isStr ? h : h.label}
+          </th>
+        );
+      })}
     </>
   );
 }

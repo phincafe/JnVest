@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LogOut, RefreshCcw } from "lucide-react";
+import { LogOut, RefreshCcw, Search } from "lucide-react";
 import { api } from "../api/client";
 import type { SnapTradeHoldings } from "../api/types";
 import { changeClass, fmtPrice } from "../lib/format";
@@ -8,9 +8,10 @@ type Props = {
   refreshNonce: number;
   onRefresh: () => void;
   onLogout: () => void;
+  onSearch?: () => void;
 };
 
-export function Header({ refreshNonce, onRefresh, onLogout }: Props) {
+export function Header({ refreshNonce, onRefresh, onLogout, onSearch }: Props) {
   const [equity, setEquity] = useState<number | null>(null);
   const [invested, setInvested] = useState<number | null>(null);
   const [unrealized, setUnrealized] = useState<number | null>(null);
@@ -58,9 +59,22 @@ export function Header({ refreshNonce, onRefresh, onLogout }: Props) {
         </div>
 
         <div className="flex items-center gap-1">
+          {onSearch && (
+            <button
+              onClick={onSearch}
+              className="hidden items-center gap-1.5 rounded-md border border-(--color-border) px-2.5 py-1.5 text-xs text-(--color-text-dim) hover:text-(--color-text) sm:flex"
+              aria-label="Search ticker"
+              title="Search ticker (⌘K)"
+            >
+              <Search size={14} />
+              <kbd className="ml-1 hidden rounded border border-(--color-border) px-1 text-[10px] md:inline">
+                ⌘K
+              </kbd>
+            </button>
+          )}
           <button
             onClick={onRefresh}
-            className="flex items-center gap-1.5 rounded-md border border-(--color-border) px-2.5 py-1.5 text-xs text-(--color-text-dim) hover:text-(--color-text)"
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
             aria-label="Refresh data"
             title="Refresh"
           >
@@ -68,7 +82,7 @@ export function Header({ refreshNonce, onRefresh, onLogout }: Props) {
           </button>
           <button
             onClick={onLogout}
-            className="flex items-center gap-1.5 rounded-md border border-(--color-border) px-2.5 py-1.5 text-xs text-(--color-text-dim) hover:text-(--color-text)"
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
             aria-label="Log out"
             title="Log out"
           >
