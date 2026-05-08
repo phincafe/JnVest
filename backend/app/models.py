@@ -7,8 +7,8 @@ from .db import Base
 
 
 class WatchlistTicker(Base):
-    __tablename__ = "watchlist_tickers"
-    __table_args__ = (UniqueConstraint("symbol", name="uq_watchlist_symbol"),)
+    __tablename__ = "jnv_watchlist_tickers"
+    __table_args__ = (UniqueConstraint("symbol", name="uq_jnv_watchlist_symbol"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     symbol: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
@@ -17,7 +17,7 @@ class WatchlistTicker(Base):
 
 
 class ManualPosition(Base):
-    __tablename__ = "manual_positions"
+    __tablename__ = "jnv_manual_positions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     symbol: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
@@ -33,8 +33,8 @@ class ManualPosition(Base):
 class IVHistory(Base):
     """Stores daily ATM IV snapshots so we can compute IV Rank/Percentile over 1Y."""
 
-    __tablename__ = "iv_history"
-    __table_args__ = (UniqueConstraint("symbol", "as_of_date", name="uq_iv_symbol_date"),)
+    __tablename__ = "jnv_iv_history"
+    __table_args__ = (UniqueConstraint("symbol", "as_of_date", name="uq_jnv_iv_symbol_date"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     symbol: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
