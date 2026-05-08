@@ -277,6 +277,40 @@ async def bars(
     return await cache.aget_or_set(key, fetch, ttl_seconds=60)
 
 
+async def option_snapshots(occ_symbols: list[str]) -> dict[str, dict[str, Any]]:
+    """Latest snapshots (quote + last trade) for OCC option symbols. Cached 30s.
+
+    OCC format: SYMBOLYYMMDDC|PSTRIKExxxxxxxx (strike × 1000, 8-digit padded).
+    Returns {} on error or no creds — caller falls back to SnapTrade pricing.
+    """
+    if not occ_symbols:
+        return {}
+    if not _has_creds():
+        return {}
+    key = "opt-snap:" + ",".join(sorted(occ_symbols))
+
+    async def fetch() -> dict[str, dict[str, Any]]:
+        url = "https://data.alpaca.markets/v1beta1/options/snapshots"
+        try:
+            async with httpx.AsyncClient(timeout=DATA_TIMEOUT) as client:
+                # Alpaca caps batch size around 100 symbols; chunk to be safe.
+                out: dict[str, dict[str, Any]] = {}
+                for i in range(0, len(occ_symbols), 100):
+                    batch = occ_symbols[i : i + 100]
+                    r = await client.get(
+                        url, params={"symbols": ",".join(batch)}, headers=_data_headers()
+                    )
+                    if r.status_code in (404, 422):
+                        continue
+                    r.raise_for_status()
+                    out.update(r.json().get("snapshots", {}))
+                return out
+        except Exception:
+            return {}
+
+    return await cache.aget_or_set(key, fetch, ttl_seconds=30)
+
+
 async def get_account() -> dict[str, Any]:
     if not _has_creds():
         raise RuntimeError("Alpaca credentials not configured")

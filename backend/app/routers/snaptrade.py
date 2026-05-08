@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -86,6 +87,58 @@ def _resolve_order_option(o: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+# Money-market sweep tickers brokers report as both "cash" AND a position.
+# We drop them from positions so they don't double-count — their value is
+# already captured in the account's cash balance.
+CASH_EQUIVALENT_TICKERS = {
+    "SPAXX",  # Fidelity Government MMF
+    "FCASH",  # Fidelity uninvested cash
+    "FZFXX",  # Fidelity Treasury MMF
+    "FDRXX",  # Fidelity Government Cash Reserves
+    "FDIC",
+    "VMFXX",  # Vanguard Federal MMF
+    "SWVXX",  # Schwab Value Advantage MMF
+    "VUSXX",  # Vanguard Treasury MMF
+    "SPRXX",  # Fidelity MMF
+}
+
+
+def _to_occ_symbol(
+    underlying: str | None,
+    expiration: str | None,
+    option_type: str | None,
+    strike: float | int | None,
+) -> str | None:
+    """Build the OCC option symbol Alpaca expects: SYMBOLYYMMDDC|PSTRIKExxxxxxxx
+    (strike × 1000, padded to 8 digits). Returns None if any field is missing."""
+    if not underlying or not expiration or not option_type or strike is None:
+        return None
+    try:
+        yy = expiration[2:4]
+        mm = expiration[5:7]
+        dd = expiration[8:10]
+        cp = "C" if str(option_type).upper().startswith("C") else "P"
+        strike_int = int(round(float(strike) * 1000))
+        return f"{underlying.upper()}{yy}{mm}{dd}{cp}{strike_int:08d}"
+    except (ValueError, TypeError):
+        return None
+
+
+def _alpaca_option_mid(snap: dict[str, Any]) -> float | None:
+    """Pull a usable price out of an Alpaca options snapshot.
+    Prefer mid of latest quote (bid+ask)/2; fall back to last trade."""
+    if not isinstance(snap, dict):
+        return None
+    q = snap.get("latestQuote") or {}
+    bp = float(q.get("bp") or 0)
+    ap = float(q.get("ap") or 0)
+    if bp > 0 and ap > 0:
+        return (bp + ap) / 2.0
+    t = snap.get("latestTrade") or {}
+    p = float(t.get("p") or 0)
+    return p if p > 0 else None
+
+
 def _action_is_option(action: str | None) -> bool:
     """Heuristic: option order actions are BUY_OPEN / SELL_CLOSE / etc.
     Stock actions are BUY / SELL."""
@@ -98,6 +151,7 @@ def _action_is_option(action: str | None) -> bool:
 def _flatten(
     holdings: list[dict[str, Any]],
     prev_closes: dict[str, float] | None = None,
+    option_quotes: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """Map SnapTrade's per-account holdings into a UI-friendly shape.
 
@@ -105,8 +159,13 @@ def _flatten(
     today's-change for stock positions. Options aren't included since we don't
     have option prev-close data; per-account `today_pl_complete` flags whether
     the account is options-free.
+
+    `option_quotes` (OCC symbol → live mid price per share) overrides
+    SnapTrade's stale last-trade `price` field for option positions. Falls
+    back to SnapTrade's price per option if the OCC isn't in the dict.
     """
     prev_closes = prev_closes or {}
+    option_quotes = option_quotes or {}
     out_accounts: list[dict[str, Any]] = []
     stocks: list[dict[str, Any]] = []
     options: list[dict[str, Any]] = []
@@ -141,6 +200,10 @@ def _flatten(
         # If the account has any option positions, today_pl is incomplete
         # because we don't have option prev-close data.
         acct_today_complete = True
+        # If we drop a cash-equivalent (SPAXX etc.) that the broker also
+        # reports as cash, SnapTrade's total_value is double-counting; trust
+        # our computed equity over tv_raw in that case.
+        had_cash_equivalent = False
         tv_raw = float(_safe_get(entry.get("total_value"), "value") or 0)
         total_cash += bal_cash
 
@@ -149,6 +212,9 @@ def _flatten(
                 continue
             sym = p.get("symbol") or {}
             ticker = _ticker_of(sym)
+            if ticker and ticker.upper() in CASH_EQUIVALENT_TICKERS:
+                had_cash_equivalent = True
+                continue
             description = _safe_get(sym, "description") or _safe_get(
                 _safe_get(sym, "symbol"), "description"
             )
@@ -192,11 +258,23 @@ def _flatten(
             opt_sym = _safe_get(sym, "option_symbol") or {}
             underlying = _ticker_of(_safe_get(opt_sym, "underlying_symbol")) or _ticker_of(sym)
             qty = float(op.get("units") or 0)
-            # SnapTrade quirk: `price` is per-share (current premium), but
-            # `average_purchase_price` is the per-contract dollar cost
-            # (i.e. already × the 100-share multiplier). So we apply the
-            # multiplier to current value only, not to cost.
-            price = float(op.get("price") or 0)
+            # SnapTrade's per-share `price` is the LAST trade — for illiquid
+            # long-dated options that's stale and can be 10-20% off the broker's
+            # live mark. If we have a live Alpaca quote for this OCC symbol,
+            # use the mid instead.
+            occ = _to_occ_symbol(
+                underlying,
+                _safe_get(opt_sym, "expiration_date"),
+                _safe_get(opt_sym, "option_type"),
+                _safe_get(opt_sym, "strike_price"),
+            )
+            price_snaptrade = float(op.get("price") or 0)
+            price = option_quotes.get(occ) if occ else None
+            if price is None or price <= 0:
+                price = price_snaptrade
+            # SnapTrade quirk: `average_purchase_price` is the per-contract
+            # dollar cost (already × the 100-share multiplier). So we apply
+            # the multiplier to current value only, not to cost.
             avg_raw = op.get("average_purchase_price")
             avg_per_contract = float(avg_raw) if avg_raw else None
             multiplier = 100.0
@@ -280,9 +358,14 @@ def _flatten(
         # Per-account equity = cash + invested. Use SnapTrade's total_value
         # only if it's at least as big as cash + invested (i.e. it's actually
         # reporting account equity vs. just echoing cash). Otherwise our
-        # computed value is more accurate.
+        # computed value is more accurate. If we deduped a cash-equivalent
+        # position (e.g. Fidelity SPAXX), SnapTrade's total_value double-
+        # counted that money, so trust our computed value.
         computed_equity = bal_cash + acct_invested
-        acct_equity = tv_raw if tv_raw >= computed_equity - 0.01 else computed_equity
+        if had_cash_equivalent:
+            acct_equity = computed_equity
+        else:
+            acct_equity = tv_raw if tv_raw >= computed_equity - 0.01 else computed_equity
         total_value += acct_equity
 
         # today_pl% is relative to start-of-day equity (= today's equity − today_pl)
@@ -437,6 +520,35 @@ def _consolidate_for_guest(flat: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def _option_quotes_for_holdings(holdings: list[dict[str, Any]]) -> dict[str, float]:
+    """Fetch live option mid quotes for every option position. Maps OCC symbol →
+    per-share mid price. Failures fall back to {} (empty), which causes
+    `_flatten` to keep using SnapTrade's stale last-trade price."""
+    occs: list[str] = []
+    for entry in holdings:
+        for op in entry.get("option_positions") or []:
+            if not isinstance(op, dict):
+                continue
+            opt_sym = _safe_get(op.get("symbol"), "option_symbol") or {}
+            occ = _to_occ_symbol(
+                _ticker_of(_safe_get(opt_sym, "underlying_symbol")) or _ticker_of(op.get("symbol")),
+                _safe_get(opt_sym, "expiration_date"),
+                _safe_get(opt_sym, "option_type"),
+                _safe_get(opt_sym, "strike_price"),
+            )
+            if occ:
+                occs.append(occ)
+    if not occs:
+        return {}
+    snaps = await alpaca.option_snapshots(sorted(set(occs)))
+    out: dict[str, float] = {}
+    for occ, snap in snaps.items():
+        mid = _alpaca_option_mid(snap)
+        if mid is not None:
+            out[occ] = mid
+    return out
+
+
 async def _prev_closes_for_holdings(holdings: list[dict[str, Any]]) -> dict[str, float]:
     """Fetch yesterday's close for every stock ticker held across all accounts.
     Used to compute per-account today's-change. Failures (no creds, API error)
@@ -478,8 +590,11 @@ async def get_holdings(request: Request, db: Session = Depends(get_db)) -> dict[
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"SnapTrade error: {e}") from e
-    prev_closes = await _prev_closes_for_holdings(raw)
-    flat = _flatten(raw, prev_closes=prev_closes)
+    prev_closes, option_quotes = await asyncio.gather(
+        _prev_closes_for_holdings(raw),
+        _option_quotes_for_holdings(raw),
+    )
+    flat = _flatten(raw, prev_closes=prev_closes, option_quotes=option_quotes)
     # Apply user-chosen account nicknames.
     aliases = {a.account_id: a.nickname for a in db.query(BrokerageAccountAlias).all()}
     for acct in flat["accounts"]:
@@ -625,7 +740,10 @@ async def debug(request: Request, db: Session = Depends(get_db)) -> dict[str, An
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"SnapTrade error: {e}") from e
 
-    prev_closes = await _prev_closes_for_holdings(raw)
+    prev_closes, option_quotes = await asyncio.gather(
+        _prev_closes_for_holdings(raw),
+        _option_quotes_for_holdings(raw),
+    )
     out: list[dict[str, Any]] = []
     for entry in raw:
         acct = entry.get("account") or {}
@@ -644,6 +762,7 @@ async def debug(request: Request, db: Session = Depends(get_db)) -> dict[str, An
 
         positions_dump: list[dict[str, Any]] = []
         invested = 0.0
+        had_cash_equivalent = False
         for p in entry.get("positions") or []:
             if not isinstance(p, dict):
                 continue
@@ -653,7 +772,11 @@ async def debug(request: Request, db: Session = Depends(get_db)) -> dict[str, An
             price = float(p.get("price") or 0)
             avg = p.get("average_purchase_price")
             mkt_val = qty * price
-            invested += mkt_val
+            is_cash_equiv = bool(ticker and ticker.upper() in CASH_EQUIVALENT_TICKERS)
+            if is_cash_equiv:
+                had_cash_equivalent = True
+            else:
+                invested += mkt_val
             pc = prev_closes.get((ticker or "").upper()) if ticker else None
             today_change = ((price - pc) * qty) if (pc and price and qty) else None
             positions_dump.append(
@@ -665,6 +788,7 @@ async def debug(request: Request, db: Session = Depends(get_db)) -> dict[str, An
                     "computed_market_value": mkt_val,
                     "alpaca_prev_close": pc,
                     "today_change": today_change,
+                    "cash_equivalent_dropped": is_cash_equiv,
                 }
             )
 
@@ -674,23 +798,34 @@ async def debug(request: Request, db: Session = Depends(get_db)) -> dict[str, An
                 continue
             sym = op.get("symbol") or {}
             opt_sym = _safe_get(sym, "option_symbol") or {}
+            underlying = _ticker_of(_safe_get(opt_sym, "underlying_symbol")) or _ticker_of(sym)
             qty = float(op.get("units") or 0)
-            price = float(op.get("price") or 0)
+            price_snaptrade = float(op.get("price") or 0)
             avg = op.get("average_purchase_price")
-            # Show the position dict's raw keys so we can spot any prev_close
-            # field we're not using yet. Cap at the keys themselves to keep
-            # payload small.
-            mkt_val = qty * price * 100.0
+            occ = _to_occ_symbol(
+                underlying,
+                _safe_get(opt_sym, "expiration_date"),
+                _safe_get(opt_sym, "option_type"),
+                _safe_get(opt_sym, "strike_price"),
+            )
+            alpaca_mid = option_quotes.get(occ) if occ else None
+            effective_price = (
+                alpaca_mid if (alpaca_mid is not None and alpaca_mid > 0) else price_snaptrade
+            )
+            mkt_val = qty * effective_price * 100.0
             invested += mkt_val
             options_dump.append(
                 {
-                    "underlying": _ticker_of(_safe_get(opt_sym, "underlying_symbol")),
+                    "underlying": underlying,
                     "ticker": _safe_get(opt_sym, "ticker"),
+                    "occ_symbol": occ,
                     "option_type": _safe_get(opt_sym, "option_type"),
                     "strike": _safe_get(opt_sym, "strike_price"),
                     "expiration": _safe_get(opt_sym, "expiration_date"),
                     "qty": qty,
-                    "snaptrade_price_per_share": price,
+                    "snaptrade_price_per_share": price_snaptrade,
+                    "alpaca_mid_per_share": alpaca_mid,
+                    "effective_price_per_share": effective_price,
                     "snaptrade_avg_per_contract": float(avg) if avg else None,
                     "computed_market_value": mkt_val,
                     "raw_keys": sorted(op.keys()),
@@ -717,6 +852,7 @@ async def debug(request: Request, db: Session = Depends(get_db)) -> dict[str, An
                     "diff_vs_snaptrade_total": (
                         computed_equity - snaptrade_total_value if snaptrade_total_value else None
                     ),
+                    "had_cash_equivalent_dropped": had_cash_equivalent,
                 },
                 "positions": positions_dump,
                 "options": options_dump,
