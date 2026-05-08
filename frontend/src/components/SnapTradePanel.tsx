@@ -16,7 +16,13 @@ import { Skeleton } from "./Skeleton";
 
 const REFRESH_MS = 5 * 60_000;
 
-export function SnapTradePanel({ refreshNonce }: { refreshNonce: number }) {
+export function SnapTradePanel({
+  refreshNonce,
+  isGuest = false,
+}: {
+  refreshNonce: number;
+  isGuest?: boolean;
+}) {
   const [needsCfg, setNeedsCfg] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -128,10 +134,13 @@ export function SnapTradePanel({ refreshNonce }: { refreshNonce: number }) {
     }
   };
 
-  const isGuest = holdings?.guest === true;
-
   // Guest view: a different layout entirely. Pie chart + simple weight tables.
-  if (isGuest && holdings) {
+  // Use the auth-derived `isGuest` prop (not holdings?.guest) so we never flash
+  // owner-only buttons (Connect broker, Sync, etc.) during the holdings fetch.
+  if (isGuest) {
+    if (!holdings) {
+      return <Skeleton className="h-64 w-full" />;
+    }
     return <GuestPortfolioView holdings={holdings} />;
   }
 

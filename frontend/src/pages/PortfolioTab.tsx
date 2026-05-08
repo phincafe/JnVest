@@ -10,7 +10,7 @@ export default function PortfolioTab({
 }) {
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-4">
-      <SnapTradePanel refreshNonce={refreshNonce} />
+      <SnapTradePanel refreshNonce={refreshNonce} isGuest={isGuest} />
       <RecentActivity refreshNonce={refreshNonce} isGuest={isGuest} />
     </div>
   );
