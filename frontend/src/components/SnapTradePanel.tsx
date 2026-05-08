@@ -231,6 +231,10 @@ function AccountChips({
   onSelect: (id: string) => void;
 }) {
   const totalEq = accounts.reduce((s, a) => s + (a.equity || a.balance || 0), 0);
+  const totalCash = accounts.reduce((s, a) => s + (a.cash || 0), 0);
+  const totalInvested =
+    positions.reduce((s, p) => s + p.market_value, 0) +
+    options.reduce((s, o) => s + o.market_value, 0);
   const [sort, setSort] = useState<"equity" | "name" | "broker">("equity");
 
   const enriched = accounts.map((a) => {
@@ -244,7 +248,7 @@ function AccountChips({
       acctOpts.reduce((s, o) => s + o.market_value, 0);
     const pl = cost ? value - cost : null;
     const plPct = cost ? ((value - cost) / cost) * 100 : null;
-    return { account: a, pl, plPct };
+    return { account: a, pl, plPct, invested: value, cash: a.cash || 0 };
   });
 
   const sorted = [...enriched].sort((a, b) => {
@@ -269,15 +273,17 @@ function AccountChips({
           </select>
         </label>
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         <Chip
           active={selected === "all"}
           onClick={() => onSelect("all")}
           title="All accounts"
           subtitle={`${accounts.length} brokerage${accounts.length === 1 ? "" : "s"}`}
           amount={`$${fmtPrice(totalEq)}`}
+          invested={totalInvested}
+          cash={totalCash}
         />
-        {sorted.map(({ account: a, pl, plPct }) => (
+        {sorted.map(({ account: a, pl, plPct, invested, cash }) => (
           <Chip
             key={a.id}
             active={selected === a.id}
@@ -287,6 +293,8 @@ function AccountChips({
             amount={`$${fmtPrice(a.balance || 0)}`}
             pl={pl}
             plPct={plPct}
+            invested={invested}
+            cash={cash}
           />
         ))}
       </div>
@@ -302,6 +310,8 @@ function Chip({
   amount,
   pl,
   plPct,
+  invested,
+  cash,
 }: {
   active: boolean;
   onClick: () => void;
@@ -310,11 +320,13 @@ function Chip({
   amount: string;
   pl?: number | null;
   plPct?: number | null;
+  invested?: number;
+  cash?: number;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex min-h-[5.5rem] flex-col items-start gap-0.5 rounded-xl border p-3 text-left transition-colors ${
+      className={`flex flex-col items-stretch gap-1 rounded-xl border p-3 text-left transition-colors ${
         active
           ? "border-(--color-accent) bg-(--color-accent)/10"
           : "border-(--color-border) bg-(--color-panel) hover:border-(--color-text-dim)"
@@ -324,7 +336,7 @@ function Chip({
       <div className="text-[10px] uppercase tracking-wide text-(--color-text-dim)">
         {subtitle}
       </div>
-      <div className="mt-1 flex items-baseline gap-2 tabular-nums">
+      <div className="mt-1 flex items-baseline justify-between gap-2 tabular-nums">
         <span className="text-base font-semibold">{amount}</span>
         {pl != null && (
           <span className={`text-[11px] ${changeClass(pl)}`}>
@@ -333,6 +345,22 @@ function Chip({
           </span>
         )}
       </div>
+      {(invested != null || cash != null) && (
+        <div className="mt-1 grid grid-cols-2 gap-2 border-t border-(--color-border)/60 pt-2 text-[11px] tabular-nums">
+          <div>
+            <div className="text-[9px] uppercase tracking-wide text-(--color-text-dim)">
+              Invested
+            </div>
+            <div className="font-medium">${fmtPrice(invested ?? 0)}</div>
+          </div>
+          <div>
+            <div className="text-[9px] uppercase tracking-wide text-(--color-text-dim)">
+              Cash
+            </div>
+            <div className="font-medium">${fmtPrice(cash ?? 0)}</div>
+          </div>
+        </div>
+      )}
     </button>
   );
 }
