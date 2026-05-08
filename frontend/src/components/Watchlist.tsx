@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Trash2, X, Wifi, WifiOff } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { WatchlistQuotesResponse, WatchlistRow } from "../api/types";
@@ -54,7 +54,7 @@ function rsiBadge(r: number | null): { text: string; cls: string } {
   return { text: r.toFixed(0), cls };
 }
 
-function earningsBadge(days: number | null): JSX.Element | null {
+function earningsBadge(days: number | null): ReactNode {
   if (days == null || days < 0 || days > 14) return null;
   return (
     <span className="ml-2 rounded bg-purple-500/30 px-1.5 py-0.5 text-[10px] font-medium text-purple-200">

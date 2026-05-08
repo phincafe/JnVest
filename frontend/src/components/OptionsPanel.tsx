@@ -206,7 +206,7 @@ function TermStructureCard({ iv }: { iv: IvSummary | null }) {
               />
               <Tooltip
                 contentStyle={{ background: "#131722", border: "1px solid #232838" }}
-                formatter={(v: number) => `${v.toFixed(1)}%`}
+                formatter={(v) => (typeof v === "number" ? `${v.toFixed(1)}%` : "—")}
               />
               <Line
                 dataKey="iv"
@@ -254,7 +254,7 @@ function SkewCard({ iv }: { iv: IvSummary | null }) {
               />
               <Tooltip
                 contentStyle={{ background: "#131722", border: "1px solid #232838" }}
-                formatter={(v: number) => `${v.toFixed(1)}%`}
+                formatter={(v) => (typeof v === "number" ? `${v.toFixed(1)}%` : "—")}
               />
               {iv.spot > 0 && (
                 <ReferenceLine x={iv.spot} stroke="#a855f7" strokeDasharray="2 2" />
