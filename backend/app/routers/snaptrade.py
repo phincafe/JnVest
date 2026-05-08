@@ -390,10 +390,10 @@ def _consolidate_for_guest(flat: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.get("/holdings")
-def get_holdings(request: Request, db: Session = Depends(get_db)) -> dict[str, Any]:
+async def get_holdings(request: Request, db: Session = Depends(get_db)) -> dict[str, Any]:
     try:
         user = snaptrade_svc.get_or_create_user(db)
-        raw = snaptrade_svc.all_holdings(user)
+        raw = await snaptrade_svc.all_holdings(user)
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
@@ -503,12 +503,12 @@ def clear_nickname(account_id: str, db: Session = Depends(get_db)) -> dict[str, 
 
 
 @router.post("/sync-watchlist")
-def sync_to_watchlist(db: Session = Depends(get_db)) -> dict[str, Any]:
+async def sync_to_watchlist(db: Session = Depends(get_db)) -> dict[str, Any]:
     """Manual trigger of the same auto-sync that runs on every /holdings call.
     Kept as a POST for users who want to force a fresh sync after trading."""
     try:
         user = snaptrade_svc.get_or_create_user(db)
-        raw = snaptrade_svc.all_holdings(user)
+        raw = await snaptrade_svc.all_holdings(user)
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:

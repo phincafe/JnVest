@@ -101,21 +101,31 @@ export function GuestPortfolioView({ holdings }: { holdings: SnapTradeHoldings }
         cashPct={holdings.totals?.cash_pct ?? null}
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.6fr)]">
-        <CategoryCard
-          title="Options"
-          subtitle={`${optionPctOfPortfolio.toFixed(1)}% of invested · ${holdings.options.length} contract${holdings.options.length === 1 ? "" : "s"}`}
-          slices={optionSlices}
-          palette={OPTION_PALETTE}
-        />
-        <CategoryCard
-          title="Stocks"
-          subtitle={`${stockPctOfPortfolio.toFixed(1)}% of invested · ${holdings.positions.length} holding${holdings.positions.length === 1 ? "" : "s"}`}
-          slices={stockSlices}
-          palette={STOCK_PALETTE}
-        />
-        <CashCard cashPct={holdings.totals?.cash_pct ?? null} />
-      </div>
+      {(() => {
+        // Rebase Options/Stocks/Cash so they sum to 100% across the whole
+        // portfolio (cash + invested), not just the invested slice.
+        const cashPct = holdings.totals?.cash_pct ?? 0;
+        const investedShare = Math.max(100 - cashPct, 0) / 100;
+        const optionsOfPortfolio = optionPctOfPortfolio * investedShare;
+        const stocksOfPortfolio = stockPctOfPortfolio * investedShare;
+        return (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.6fr)]">
+            <CategoryCard
+              title="Options"
+              subtitle={`${optionsOfPortfolio.toFixed(1)}% of portfolio · ${holdings.options.length} contract${holdings.options.length === 1 ? "" : "s"}`}
+              slices={optionSlices}
+              palette={OPTION_PALETTE}
+            />
+            <CategoryCard
+              title="Stocks"
+              subtitle={`${stocksOfPortfolio.toFixed(1)}% of portfolio · ${holdings.positions.length} holding${holdings.positions.length === 1 ? "" : "s"}`}
+              slices={stockSlices}
+              palette={STOCK_PALETTE}
+            />
+            <CashCard cashPct={holdings.totals?.cash_pct ?? null} />
+          </div>
+        );
+      })()}
 
       {holdings.options.length > 0 && (
         <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">

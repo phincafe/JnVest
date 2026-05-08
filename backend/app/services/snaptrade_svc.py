@@ -5,6 +5,7 @@ Single-user app: we register one SnapTrade end-user lazily on first call and
 reuse it forever. The userSecret is stored in jnv_snaptrade_user.
 """
 
+import asyncio
 import secrets
 from typing import Any
 
@@ -67,7 +68,7 @@ def remove_authorization(user: SnapTradeUser, authorization_id: str) -> None:
     )
 
 
-def all_holdings(user: SnapTradeUser) -> list[dict[str, Any]]:
+async def all_holdings(user: SnapTradeUser) -> list[dict[str, Any]]:
     """Aggregated holdings across all connected accounts.
 
     NOTE: SnapTrade deprecated the bulk `get_all_user_holdings` endpoint for
@@ -75,20 +76,26 @@ def all_holdings(user: SnapTradeUser) -> list[dict[str, Any]]:
     first, then fetch holdings per account and stitch them into the same
     {account, balances, positions, option_positions, orders} shape the rest of
     the codebase expects.
+
+    Per-account fetches run in parallel via asyncio.to_thread (the SnapTrade
+    SDK is sync), turning ~6s sequential calls into one round trip.
     """
     client = _client()
-    accounts_resp = client.account_information.list_user_accounts(
-        user_id=user.user_id, user_secret=user.user_secret
+    accounts_resp = await asyncio.to_thread(
+        client.account_information.list_user_accounts,
+        user_id=user.user_id,
+        user_secret=user.user_secret,
     )
     accounts = accounts_resp.body if hasattr(accounts_resp, "body") else accounts_resp
     if not isinstance(accounts, list):
         accounts = [accounts]
 
-    out: list[dict[str, Any]] = []
-    for acct in accounts:
+    valid_accounts = [
+        a for a in accounts if (a.get("id") if isinstance(a, dict) else getattr(a, "id", None))
+    ]
+
+    def fetch_one(acct: Any) -> dict[str, Any]:
         acct_id = acct.get("id") if isinstance(acct, dict) else getattr(acct, "id", None)
-        if not acct_id:
-            continue
         try:
             h_resp = client.account_information.get_user_holdings(
                 user_id=user.user_id,
@@ -104,9 +111,9 @@ def all_holdings(user: SnapTradeUser) -> list[dict[str, Any]]:
         # nests it, but if not, fall back to the list-accounts version).
         if "account" not in entry:
             entry["account"] = _to_dict(acct)
-        out.append(entry)
+        return entry
 
-    return out
+    return await asyncio.gather(*(asyncio.to_thread(fetch_one, a) for a in valid_accounts))
 
 
 def _to_dict(obj: Any) -> Any:
