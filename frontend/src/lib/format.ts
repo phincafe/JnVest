@@ -1,6 +1,8 @@
-export function fmtPrice(n: number | null | undefined, digits = 2): string {
-  if (n == null || Number.isNaN(n)) return "—";
-  return n.toLocaleString(undefined, {
+export function fmtPrice(n: number | string | null | undefined, digits = 2): string {
+  if (n == null || n === "") return "—";
+  const num = typeof n === "string" ? Number(n) : n;
+  if (Number.isNaN(num)) return "—";
+  return num.toLocaleString(undefined, {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });

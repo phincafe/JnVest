@@ -241,7 +241,11 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
                     "status": o.get("status"),
                     "total_quantity": float(o.get("total_quantity") or 0) or None,
                     "filled_quantity": float(o.get("filled_quantity") or 0) or None,
-                    "execution_price": o.get("execution_price"),
+                    "execution_price": (
+                        float(o.get("execution_price"))
+                        if o.get("execution_price") not in (None, "")
+                        else None
+                    ),
                     "time": o.get("time_executed") or o.get("time_placed"),
                 }
             )
