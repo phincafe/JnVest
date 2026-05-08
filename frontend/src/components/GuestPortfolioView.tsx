@@ -95,55 +95,26 @@ export function GuestPortfolioView({ holdings }: { holdings: SnapTradeHoldings }
         </p>
       </div>
 
-      <StocksVsOptionsBar
+      <PortfolioMixBar
         stockPct={stockPctOfPortfolio}
         optionPct={optionPctOfPortfolio}
+        cashPct={holdings.totals?.cash_pct ?? null}
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <CategoryCard
-          title="Stocks"
-          subtitle={`${stockPctOfPortfolio.toFixed(1)}% of portfolio · ${holdings.positions.length} holding${holdings.positions.length === 1 ? "" : "s"}`}
-          slices={stockSlices}
-          palette={STOCK_PALETTE}
-        />
         <CategoryCard
           title="Options"
           subtitle={`${optionPctOfPortfolio.toFixed(1)}% of portfolio · ${holdings.options.length} contract${holdings.options.length === 1 ? "" : "s"}`}
           slices={optionSlices}
           palette={OPTION_PALETTE}
         />
+        <CategoryCard
+          title="Stocks"
+          subtitle={`${stockPctOfPortfolio.toFixed(1)}% of portfolio · ${holdings.positions.length} holding${holdings.positions.length === 1 ? "" : "s"}`}
+          slices={stockSlices}
+          palette={STOCK_PALETTE}
+        />
       </div>
-
-      {holdings.positions.length > 0 && (
-        <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
-          <h3 className="mb-3 text-xs uppercase tracking-wide text-(--color-text-dim)">
-            All stocks ({holdings.positions.length})
-          </h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-xs text-(--color-text-dim)">
-                <tr>
-                  <th className="text-left font-normal">Symbol</th>
-                  <th className="text-right font-normal">Weight (portfolio)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {holdings.positions.map((p, i) => (
-                  <tr key={i} className="border-t border-(--color-border)">
-                    <td className="py-1.5 font-medium">{p.ticker ?? "—"}</td>
-                    <td className="py-1.5 text-right tabular-nums">
-                      {p.allocation_pct != null
-                        ? `${p.allocation_pct.toFixed(2)}%`
-                        : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {holdings.options.length > 0 && (
         <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
@@ -186,72 +157,116 @@ export function GuestPortfolioView({ holdings }: { holdings: SnapTradeHoldings }
           </div>
         </div>
       )}
+
+      {holdings.positions.length > 0 && (
+        <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
+          <h3 className="mb-3 text-xs uppercase tracking-wide text-(--color-text-dim)">
+            All stocks ({holdings.positions.length})
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-xs text-(--color-text-dim)">
+                <tr>
+                  <th className="text-left font-normal">Symbol</th>
+                  <th className="text-right font-normal">Weight (portfolio)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {holdings.positions.map((p, i) => (
+                  <tr key={i} className="border-t border-(--color-border)">
+                    <td className="py-1.5 font-medium">{p.ticker ?? "—"}</td>
+                    <td className="py-1.5 text-right tabular-nums">
+                      {p.allocation_pct != null
+                        ? `${p.allocation_pct.toFixed(2)}%`
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
 
-function StocksVsOptionsBar({
+function PortfolioMixBar({
   stockPct,
   optionPct,
+  cashPct,
 }: {
+  /** Stocks as % of invested capital. */
   stockPct: number;
+  /** Options as % of invested capital. */
   optionPct: number;
+  /** Cash as % of total account value (cash + invested). May be null if backend didn't supply. */
+  cashPct: number | null;
 }) {
-  const total = stockPct + optionPct;
-  if (total <= 0) return null;
-  // Normalize so the bar always fills (positions can sum to slightly !=100
-  // due to rounding or partial data).
-  const stockShare = (stockPct / total) * 100;
-  const optionShare = (optionPct / total) * 100;
+  // Normalize the bar to total account value (cash + invested = 100%).
+  const investedShare = cashPct != null ? Math.max(100 - cashPct, 0) : 100;
+  const stockSegment =
+    stockPct + optionPct > 0
+      ? (stockPct / (stockPct + optionPct)) * investedShare
+      : 0;
+  const optionSegment =
+    stockPct + optionPct > 0
+      ? (optionPct / (stockPct + optionPct)) * investedShare
+      : 0;
+  const cashSegment = cashPct ?? 0;
+
   return (
     <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
       <div className="mb-2 flex items-baseline justify-between">
         <h3 className="text-xs uppercase tracking-wide text-(--color-text-dim)">
-          Stocks vs options
+          Portfolio mix
         </h3>
         <span className="text-[11px] text-(--color-text-dim) tabular-nums">
-          {total.toFixed(1)}% of portfolio invested
+          {investedShare.toFixed(1)}% invested
+          {cashPct != null && ` · ${cashPct.toFixed(1)}% cash`}
         </span>
       </div>
       <div className="flex h-3 overflow-hidden rounded-full bg-(--color-panel-2)">
-        {stockShare > 0 && (
-          <div
-            className="bg-blue-500"
-            style={{ width: `${stockShare}%` }}
-            title={`Stocks ${stockPct.toFixed(2)}%`}
-          />
-        )}
-        {optionShare > 0 && (
+        {optionSegment > 0 && (
           <div
             className="bg-purple-500"
-            style={{ width: `${optionShare}%` }}
-            title={`Options ${optionPct.toFixed(2)}%`}
+            style={{ width: `${optionSegment}%` }}
+            title={`Options — ${optionSegment.toFixed(2)}% of total`}
+          />
+        )}
+        {stockSegment > 0 && (
+          <div
+            className="bg-blue-500"
+            style={{ width: `${stockSegment}%` }}
+            title={`Stocks — ${stockSegment.toFixed(2)}% of total`}
+          />
+        )}
+        {cashSegment > 0 && (
+          <div
+            className="bg-emerald-500/70"
+            style={{ width: `${cashSegment}%` }}
+            title={`Cash — ${cashSegment.toFixed(2)}% of total`}
           />
         )}
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-        <span className="flex items-baseline gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-sm bg-blue-500" />
-          <span className="text-(--color-text-dim)">Stocks</span>
-          <span className="font-medium tabular-nums text-(--color-text)">
-            {stockPct.toFixed(2)}%
-          </span>
-          <span className="text-[10px] text-(--color-text-dim)">
-            ({stockShare.toFixed(1)}% of invested)
-          </span>
-        </span>
-        <span className="flex items-baseline gap-1.5">
-          <span className="inline-block h-2 w-2 rounded-sm bg-purple-500" />
-          <span className="text-(--color-text-dim)">Options</span>
-          <span className="font-medium tabular-nums text-(--color-text)">
-            {optionPct.toFixed(2)}%
-          </span>
-          <span className="text-[10px] text-(--color-text-dim)">
-            ({optionShare.toFixed(1)}% of invested)
-          </span>
-        </span>
+        <LegendItem color="bg-purple-500" label="Options" pct={optionSegment} />
+        <LegendItem color="bg-blue-500" label="Stocks" pct={stockSegment} />
+        {cashPct != null && (
+          <LegendItem color="bg-emerald-500/70" label="Cash" pct={cashSegment} />
+        )}
       </div>
     </div>
+  );
+}
+
+function LegendItem({ color, label, pct }: { color: string; label: string; pct: number }) {
+  return (
+    <span className="flex items-baseline gap-1.5">
+      <span className={`inline-block h-2 w-2 rounded-sm ${color}`} />
+      <span className="text-(--color-text-dim)">{label}</span>
+      <span className="font-medium tabular-nums text-(--color-text)">{pct.toFixed(2)}%</span>
+    </span>
   );
 }
 

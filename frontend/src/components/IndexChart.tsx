@@ -31,7 +31,12 @@ const INTERVALS = [
   { value: "30Min", label: "30m" },
 ];
 
-type Resp = { symbol: string; interval: string; bars: Bar[] };
+type Resp = {
+  symbol: string;
+  interval: string;
+  bars: Bar[];
+  prev_close: number | null;
+};
 
 const tToTime = (t: string): Time =>
   Math.floor(new Date(t).getTime() / 1000) as unknown as Time;
@@ -140,14 +145,16 @@ export function IndexChart() {
     }
   }, [liveTick, chartType]);
 
-  // Header summary: prefer live tick price when available.
+  // Header summary: change vs PRIOR session close (matches Yahoo/Robinhood),
+  // not vs today's first bar open. Falls back to today's first bar if backend
+  // didn't supply prev_close (older API or no daily data).
   const summary = useMemo(() => {
     if (!data?.bars?.length) return null;
     const bars = data.bars;
-    const open = bars[0].o;
+    const baseline = data.prev_close ?? bars[0].o;
     const lastClose = liveTick?.price ?? bars[bars.length - 1].c;
-    const change = lastClose - open;
-    const pct = open ? (change / open) * 100 : 0;
+    const change = lastClose - baseline;
+    const pct = baseline ? (change / baseline) * 100 : 0;
     return { last: lastClose, change, pct, count: bars.length };
   }, [data, liveTick]);
 

@@ -460,8 +460,8 @@ function AggregatedDetail({ holdings }: { holdings: SnapTradeHoldings }) {
         </div>
       </header>
       <div className="space-y-4 p-4">
-        {positions.length > 0 && <SubPositionsTable positions={positions} />}
         {options.length > 0 && <SubOptionsTable options={options} />}
+        {positions.length > 0 && <SubPositionsTable positions={positions} />}
         {orders.length > 0 && <SubOrdersTable orders={orders} />}
         {positions.length === 0 && options.length === 0 && (
           <div className="text-sm text-(--color-text-dim)">No positions across any account.</div>
@@ -766,8 +766,8 @@ function AccountSection({
       </div>
 
       <div className="space-y-4 p-4">
-        {positions.length > 0 && <SubPositionsTable positions={positions} />}
         {options.length > 0 && <SubOptionsTable options={options} />}
+        {positions.length > 0 && <SubPositionsTable positions={positions} />}
         {orders.length > 0 && <SubOrdersTable orders={orders} />}
         {positions.length === 0 && options.length === 0 && orders.length === 0 && (
           <div className="text-sm text-(--color-text-dim)">No positions, options, or orders.</div>

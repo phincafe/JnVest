@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -180,19 +181,44 @@ async def market_news(limit: int = 20) -> dict[str, Any]:
 
 @router.get("/intraday/{symbol}")
 async def intraday(symbol: str, interval: str = "5Min") -> dict[str, Any]:
-    """Today's intraday bars at the chosen interval (1Min / 5Min / 15Min /
-    30Min / 1Hour). Used by the live index chart on the Morning tab."""
+    """Today's intraday bars at the chosen interval. Returns prev_close (last
+    trading day's daily close) so the frontend can compute % change the way
+    Yahoo/Robinhood do — vs prior session, not vs today's first bar."""
     if interval not in ("1Min", "5Min", "15Min", "30Min", "1Hour"):
         raise HTTPException(status_code=400, detail="invalid interval")
-    try:
-        # Pull today's bars (start = 24h ago to safely include premarket).
-        from datetime import datetime, timedelta
+    from datetime import datetime, timedelta
 
-        start = (datetime.utcnow() - timedelta(hours=36)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        bars = await alpaca.bars(symbol.upper(), timeframe=interval, start=start, limit=1000)
+    sym = symbol.upper()
+    # Tight window: today's premarket through now. ~14h covers pre-open
+    # (4 AM ET) through after-hours (8 PM ET) on any timezone.
+    start = (datetime.utcnow() - timedelta(hours=14)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        bars, daily = await asyncio.gather(
+            alpaca.bars(sym, timeframe=interval, start=start, limit=1000),
+            alpaca.daily_bars([sym], days=5),
+        )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
-    return {"symbol": symbol.upper(), "interval": interval, "bars": bars}
+
+    # prev_close = the most recent daily bar that isn't "today" (yesterday's
+    # close for typical M-F, Friday's close on Mon, etc.).
+    prev_close: float | None = None
+    sym_dailies = (daily or {}).get(sym, [])
+    today_iso = datetime.utcnow().strftime("%Y-%m-%d")
+    for b in reversed(sym_dailies):
+        when = (b.get("t") or "")[:10]
+        if when and when < today_iso:
+            prev_close = float(b.get("c") or 0) or None
+            break
+    if prev_close is None and sym_dailies:
+        prev_close = float(sym_dailies[-1].get("c") or 0) or None
+
+    return {
+        "symbol": sym,
+        "interval": interval,
+        "bars": bars,
+        "prev_close": prev_close,
+    }
 
 
 @router.get("/macro")

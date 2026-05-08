@@ -415,7 +415,21 @@ def get_holdings(request: Request, db: Session = Depends(get_db)) -> dict[str, A
     from ..main import is_guest
 
     if is_guest(request):
-        return _consolidate_for_guest(flat)
+        result = _consolidate_for_guest(flat)
+        # Surface cash as % of total account value (cash + invested) so guests
+        # see how aggressive vs defensive the portfolio is, without revealing
+        # actual $ amounts.
+        cash = sum(a.get("cash") or 0 for a in flat["accounts"])
+        invested = sum(p["market_value"] for p in flat["positions"]) + sum(
+            o["market_value"] for o in flat["options"]
+        )
+        total = cash + invested
+        result["totals"] = {
+            **(result.get("totals") or {}),
+            "cash_pct": (cash / total * 100) if total else None,
+            "invested_pct": (invested / total * 100) if total else None,
+        }
+        return result
 
     # Owner-only side effect: keep watchlist in sync with held tickers + option
     # underlyings. Idempotent — only adds genuinely new ones. Failures here

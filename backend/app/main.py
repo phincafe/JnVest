@@ -185,6 +185,18 @@ if FRONTEND_DIST.exists():
         # Don't intercept API routes
         if full_path.startswith("api/"):
             raise HTTPException(status_code=404)
+        # If a real static file exists at this path (logo.svg, favicon.svg,
+        # manifest.webmanifest, sw.js, etc.) serve it directly. Otherwise
+        # fall through to the SPA index for client-side routing.
+        if full_path:
+            candidate = FRONTEND_DIST / full_path
+            try:
+                # Path-traversal safety: must resolve inside FRONTEND_DIST.
+                resolved = candidate.resolve()
+                if resolved.is_relative_to(FRONTEND_DIST.resolve()) and resolved.is_file():
+                    return FileResponse(resolved)
+            except (OSError, ValueError):
+                pass
         index = FRONTEND_DIST / "index.html"
         if not index.exists():
             raise HTTPException(status_code=404)
