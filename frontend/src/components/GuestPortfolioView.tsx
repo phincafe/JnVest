@@ -95,6 +95,11 @@ export function GuestPortfolioView({ holdings }: { holdings: SnapTradeHoldings }
         </p>
       </div>
 
+      <StocksVsOptionsBar
+        stockPct={stockPctOfPortfolio}
+        optionPct={optionPctOfPortfolio}
+      />
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <CategoryCard
           title="Stocks"
@@ -182,6 +187,71 @@ export function GuestPortfolioView({ holdings }: { holdings: SnapTradeHoldings }
         </div>
       )}
     </section>
+  );
+}
+
+function StocksVsOptionsBar({
+  stockPct,
+  optionPct,
+}: {
+  stockPct: number;
+  optionPct: number;
+}) {
+  const total = stockPct + optionPct;
+  if (total <= 0) return null;
+  // Normalize so the bar always fills (positions can sum to slightly !=100
+  // due to rounding or partial data).
+  const stockShare = (stockPct / total) * 100;
+  const optionShare = (optionPct / total) * 100;
+  return (
+    <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
+      <div className="mb-2 flex items-baseline justify-between">
+        <h3 className="text-xs uppercase tracking-wide text-(--color-text-dim)">
+          Stocks vs options
+        </h3>
+        <span className="text-[11px] text-(--color-text-dim) tabular-nums">
+          {total.toFixed(1)}% of portfolio invested
+        </span>
+      </div>
+      <div className="flex h-3 overflow-hidden rounded-full bg-(--color-panel-2)">
+        {stockShare > 0 && (
+          <div
+            className="bg-blue-500"
+            style={{ width: `${stockShare}%` }}
+            title={`Stocks ${stockPct.toFixed(2)}%`}
+          />
+        )}
+        {optionShare > 0 && (
+          <div
+            className="bg-purple-500"
+            style={{ width: `${optionShare}%` }}
+            title={`Options ${optionPct.toFixed(2)}%`}
+          />
+        )}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        <span className="flex items-baseline gap-1.5">
+          <span className="inline-block h-2 w-2 rounded-sm bg-blue-500" />
+          <span className="text-(--color-text-dim)">Stocks</span>
+          <span className="font-medium tabular-nums text-(--color-text)">
+            {stockPct.toFixed(2)}%
+          </span>
+          <span className="text-[10px] text-(--color-text-dim)">
+            ({stockShare.toFixed(1)}% of invested)
+          </span>
+        </span>
+        <span className="flex items-baseline gap-1.5">
+          <span className="inline-block h-2 w-2 rounded-sm bg-purple-500" />
+          <span className="text-(--color-text-dim)">Options</span>
+          <span className="font-medium tabular-nums text-(--color-text)">
+            {optionPct.toFixed(2)}%
+          </span>
+          <span className="text-[10px] text-(--color-text-dim)">
+            ({optionShare.toFixed(1)}% of invested)
+          </span>
+        </span>
+      </div>
+    </div>
   );
 }
 
