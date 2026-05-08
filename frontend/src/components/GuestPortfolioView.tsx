@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import type { SnapTradeHoldings } from "../api/types";
+import { fmtPrice } from "../lib/format";
 
 type Slice = {
   label: string;
@@ -8,7 +9,18 @@ type Slice = {
   pct: number;
   /** % of the entire portfolio (used in the legend, not the pie). */
   pct_of_portfolio: number;
+  /** Owner-mode only: $ market value for this slice. */
+  value?: number;
 };
+
+/** Compact $ formatter for legend lines: $12.3K / $1.2M. Falls back to plain
+ * fmtPrice for values under $1k so small holdings still show whole dollars. */
+function fmtCompactUsd(n: number): string {
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
+  return `$${fmtPrice(n, 0)}`;
+}
 
 // Two distinct palettes so it's instantly clear which pie is stocks vs options.
 const STOCK_PALETTE = [
@@ -28,12 +40,14 @@ function bucketLongTail(slices: Slice[]): Slice[] {
   const tail = slices.slice(TOP_N);
   const tailPct = tail.reduce((s, x) => s + x.pct, 0);
   const tailPctPort = tail.reduce((s, x) => s + x.pct_of_portfolio, 0);
+  const tailValue = tail.reduce((s, x) => s + (x.value ?? 0), 0);
   return [
     ...head,
     {
       label: `Other (${tail.length})`,
       pct: tailPct,
       pct_of_portfolio: tailPctPort,
+      value: tailValue || undefined,
     },
   ];
 }
@@ -65,31 +79,45 @@ export function GuestPortfolioView({
           ? ((p.allocation_pct ?? 0) / stockPctOfPortfolio) * 100
           : 0,
         pct_of_portfolio: p.allocation_pct ?? 0,
+        value: ownerMode ? p.market_value : undefined,
       }))
       .sort((a, b) => b.pct - a.pct);
     return bucketLongTail(raw);
-  }, [holdings.positions, stockPctOfPortfolio]);
+  }, [holdings.positions, stockPctOfPortfolio, ownerMode]);
 
   const optionSlices = useMemo(() => {
     // Collapse by underlying ticker so the pie shows one slice per stock,
     // not one per contract. The detailed per-contract list lives in the
     // "All options" table below.
-    const groups = new Map<string, number>();
+    const groups = new Map<string, { pct: number; value: number }>();
     for (const o of holdings.options) {
       const pct = o.allocation_pct ?? 0;
       if (pct <= 0) continue;
       const key = o.underlying ?? "—";
-      groups.set(key, (groups.get(key) ?? 0) + pct);
+      const cur = groups.get(key) ?? { pct: 0, value: 0 };
+      cur.pct += pct;
+      cur.value += o.market_value || 0;
+      groups.set(key, cur);
     }
     const raw = [...groups.entries()]
-      .map<Slice>(([label, pctOfPort]) => ({
+      .map<Slice>(([label, g]) => ({
         label,
-        pct: optionPctOfPortfolio ? (pctOfPort / optionPctOfPortfolio) * 100 : 0,
-        pct_of_portfolio: pctOfPort,
+        pct: optionPctOfPortfolio ? (g.pct / optionPctOfPortfolio) * 100 : 0,
+        pct_of_portfolio: g.pct,
+        value: ownerMode ? g.value : undefined,
       }))
       .sort((a, b) => b.pct - a.pct);
     return bucketLongTail(raw);
-  }, [holdings.options, optionPctOfPortfolio]);
+  }, [holdings.options, optionPctOfPortfolio, ownerMode]);
+
+  // Aggregate $ totals so card subtitles can show real dollar amounts (owner only).
+  const stocksValue = ownerMode
+    ? holdings.positions.reduce((s, p) => s + (p.market_value || 0), 0)
+    : 0;
+  const optionsValue = ownerMode
+    ? holdings.options.reduce((s, o) => s + (o.market_value || 0), 0)
+    : 0;
+  const cashValue = ownerMode ? holdings.totals?.cash ?? 0 : 0;
 
   return (
     <section className="space-y-4">
@@ -121,17 +149,22 @@ export function GuestPortfolioView({
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.6fr)]">
             <CategoryCard
               title="Options"
-              subtitle={`${optionsOfPortfolio.toFixed(1)}% of portfolio · ${holdings.options.length} contract${holdings.options.length === 1 ? "" : "s"}`}
+              subtitle={`${ownerMode ? `$${fmtPrice(optionsValue, 0)} · ` : ""}${optionsOfPortfolio.toFixed(1)}% of portfolio · ${holdings.options.length} contract${holdings.options.length === 1 ? "" : "s"}`}
               slices={optionSlices}
               palette={OPTION_PALETTE}
+              showValues={ownerMode}
             />
             <CategoryCard
               title="Stocks"
-              subtitle={`${stocksOfPortfolio.toFixed(1)}% of portfolio · ${holdings.positions.length} holding${holdings.positions.length === 1 ? "" : "s"}`}
+              subtitle={`${ownerMode ? `$${fmtPrice(stocksValue, 0)} · ` : ""}${stocksOfPortfolio.toFixed(1)}% of portfolio · ${holdings.positions.length} holding${holdings.positions.length === 1 ? "" : "s"}`}
               slices={stockSlices}
               palette={STOCK_PALETTE}
+              showValues={ownerMode}
             />
-            <CashCard cashPct={holdings.totals?.cash_pct ?? null} />
+            <CashCard
+              cashPct={holdings.totals?.cash_pct ?? null}
+              cashValue={ownerMode ? cashValue : null}
+            />
           </div>
         );
       })()}
@@ -149,6 +182,9 @@ export function GuestPortfolioView({
                   <th className="text-left font-normal">Type</th>
                   <th className="text-right font-normal">Strike</th>
                   <th className="text-left font-normal pl-3">Exp</th>
+                  {ownerMode && (
+                    <th className="text-right font-normal">Market value</th>
+                  )}
                   <th className="text-right font-normal">Weight (portfolio)</th>
                 </tr>
               </thead>
@@ -165,6 +201,11 @@ export function GuestPortfolioView({
                     <td className="py-1.5 pl-3 text-xs tabular-nums">
                       {o.expiration ?? "—"}
                     </td>
+                    {ownerMode && (
+                      <td className="py-1.5 text-right tabular-nums">
+                        ${fmtPrice(o.market_value || 0, 0)}
+                      </td>
+                    )}
                     <td className="py-1.5 text-right tabular-nums">
                       {o.allocation_pct != null
                         ? `${o.allocation_pct.toFixed(2)}%`
@@ -188,6 +229,9 @@ export function GuestPortfolioView({
               <thead className="text-xs text-(--color-text-dim)">
                 <tr>
                   <th className="text-left font-normal">Symbol</th>
+                  {ownerMode && (
+                    <th className="text-right font-normal">Market value</th>
+                  )}
                   <th className="text-right font-normal">Weight (portfolio)</th>
                 </tr>
               </thead>
@@ -195,6 +239,11 @@ export function GuestPortfolioView({
                 {holdings.positions.map((p, i) => (
                   <tr key={i} className="border-t border-(--color-border)">
                     <td className="py-1.5 font-medium">{p.ticker ?? "—"}</td>
+                    {ownerMode && (
+                      <td className="py-1.5 text-right tabular-nums">
+                        ${fmtPrice(p.market_value || 0, 0)}
+                      </td>
+                    )}
                     <td className="py-1.5 text-right tabular-nums">
                       {p.allocation_pct != null
                         ? `${p.allocation_pct.toFixed(2)}%`
@@ -290,12 +339,20 @@ function LegendItem({ color, label, pct }: { color: string; label: string; pct: 
   );
 }
 
-function CashCard({ cashPct }: { cashPct: number | null }) {
+function CashCard({
+  cashPct,
+  cashValue,
+}: {
+  cashPct: number | null;
+  /** Owner-only: $ amount to display under the donut. Null hides it. */
+  cashValue?: number | null;
+}) {
   return (
     <div className="flex flex-col rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
       <header className="mb-3">
         <h3 className="text-base font-semibold">Cash</h3>
         <p className="text-xs text-(--color-text-dim)">
+          {cashValue != null && `$${fmtPrice(cashValue, 0)} · `}
           {cashPct != null
             ? `${cashPct.toFixed(1)}% of portfolio · awaiting deployment`
             : "—"}
@@ -310,10 +367,15 @@ function CashCard({ cashPct }: { cashPct: number | null }) {
             background: `conic-gradient(rgb(16 185 129 / 0.7) 0% ${cashPct ?? 0}%, #1a1f2e ${cashPct ?? 0}% 100%)`,
           }}
         >
-          <div className="absolute inset-3 flex items-center justify-center rounded-full bg-(--color-panel)">
-            <span className="text-2xl font-semibold tabular-nums">
+          <div className="absolute inset-3 flex flex-col items-center justify-center rounded-full bg-(--color-panel)">
+            <span className="text-2xl font-semibold tabular-nums leading-none">
               {cashPct != null ? `${cashPct.toFixed(1)}%` : "—"}
             </span>
+            {cashValue != null && (
+              <span className="mt-1 text-[10px] tabular-nums text-(--color-text-dim)">
+                ${fmtPrice(cashValue, 0)}
+              </span>
+            )}
           </div>
         </div>
         <p className="text-center text-[11px] text-(--color-text-dim)">
@@ -329,11 +391,14 @@ function CategoryCard({
   subtitle,
   slices,
   palette,
+  showValues = false,
 }: {
   title: string;
   subtitle: string;
   slices: Slice[];
   palette: string[];
+  /** Owner-only: render $ value next to each legend row + in tooltip. */
+  showValues?: boolean;
 }) {
   if (slices.length === 0) {
     return (
@@ -389,8 +454,10 @@ function CategoryCard({
                 }}
                 formatter={(v: number, _name: string, item) => {
                   const s = item.payload as Slice;
+                  const dollarPart =
+                    showValues && s.value != null ? `${fmtCompactUsd(s.value)} · ` : "";
                   return [
-                    `${v.toFixed(2)}% of ${title.toLowerCase()} (${s.pct_of_portfolio.toFixed(2)}% of portfolio)`,
+                    `${dollarPart}${v.toFixed(2)}% of ${title.toLowerCase()} (${s.pct_of_portfolio.toFixed(2)}% of portfolio)`,
                     s.label,
                   ];
                 }}
@@ -409,8 +476,11 @@ function CategoryCard({
                 />
                 <span className="truncate font-medium">{s.label}</span>
               </span>
-              <span className="shrink-0 tabular-nums text-(--color-text-dim)">
-                {s.pct.toFixed(1)}%
+              <span className="flex shrink-0 items-baseline gap-2 tabular-nums text-(--color-text-dim)">
+                {showValues && s.value != null && (
+                  <span className="text-(--color-text)">{fmtCompactUsd(s.value)}</span>
+                )}
+                <span>{s.pct.toFixed(1)}%</span>
               </span>
             </li>
           ))}
