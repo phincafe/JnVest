@@ -26,13 +26,13 @@ def _impact_label(raw: str | None) -> str:
 async def today(db: Session = Depends(get_db)) -> dict[str, Any]:
     watchlist = {r.symbol for r in db.query(WatchlistTicker).all()}
     today_iso = datetime.utcnow().strftime("%Y-%m-%d")
-    end_iso = (datetime.utcnow() + timedelta(days=7)).strftime("%Y-%m-%d")
+    end_iso = (datetime.utcnow() + timedelta(days=10)).strftime("%Y-%m-%d")
 
     econ_warning: str | None = None
     earnings_warning: str | None = None
 
     try:
-        econ_raw = await finnhub.economic_calendar(days_ahead=7)
+        econ_raw = await finnhub.economic_calendar(days_ahead=10)
     except RuntimeError as e:
         econ_raw = []
         econ_warning = str(e)
@@ -68,7 +68,7 @@ async def today(db: Session = Depends(get_db)) -> dict[str, Any]:
     econ.sort(key=lambda x: (x.get("time") or ""))
 
     try:
-        earn_raw = await finnhub.earnings_calendar(days_ahead=7)
+        earn_raw = await finnhub.earnings_calendar(days_ahead=10)
     except RuntimeError as e:
         earn_raw = []
         earnings_warning = str(e)
