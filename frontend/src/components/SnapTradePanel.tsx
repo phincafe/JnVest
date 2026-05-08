@@ -647,10 +647,22 @@ function AccountSection({
         </div>
         <div className="flex items-baseline gap-4 text-sm tabular-nums">
           <span className="text-(--color-text-dim)">
-            Equity <span className="text-(--color-text)">${fmtPrice(account.balance)}</span>
+            Equity{" "}
+            <span className="text-(--color-text) font-medium">
+              ${fmtPrice(account.balance)}
+            </span>
           </span>
           <span className="text-(--color-text-dim)">
-            Cash <span className="text-(--color-text)">${fmtPrice(account.cash)}</span>
+            Invested{" "}
+            <span className="text-(--color-text) font-medium">
+              ${fmtPrice(acctValue)}
+            </span>
+          </span>
+          <span className="text-(--color-text-dim)">
+            Cash{" "}
+            <span className="text-(--color-text) font-medium">
+              ${fmtPrice(account.cash)}
+            </span>
           </span>
           {acctCost > 0 && (
             <span className={`font-medium ${changeClass(acctPL)}`}>
