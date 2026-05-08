@@ -72,10 +72,8 @@ export function Header({
             Viewing as guest · $ amounts hidden
           </div>
         ) : (
-          <div className="flex items-center gap-5 text-xs sm:text-sm tabular-nums">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums sm:gap-x-5 sm:text-sm">
             <Stat label="Equity" value={equity != null ? `$${fmtPrice(equity)}` : "—"} />
-            <Stat label="Invested" value={invested != null ? `$${fmtPrice(invested)}` : "—"} />
-            <Stat label="Cash" value={cash != null ? `$${fmtPrice(cash)}` : "—"} />
             <Stat
               label="Unrealized"
               value={
@@ -84,6 +82,16 @@ export function Header({
                   : "—"
               }
               tone={changeClass(unrealized)}
+            />
+            <Stat
+              label="Invested"
+              value={invested != null ? `$${fmtPrice(invested)}` : "—"}
+              hideOnMobile
+            />
+            <Stat
+              label="Cash"
+              value={cash != null ? `$${fmtPrice(cash)}` : "—"}
+              hideOnMobile
             />
           </div>
         )}
@@ -141,13 +149,17 @@ function Stat({
   label,
   value,
   tone,
+  hideOnMobile,
 }: {
   label: string;
   value: string;
   tone?: string;
+  hideOnMobile?: boolean;
 }) {
   return (
-    <div className="flex items-baseline gap-1.5">
+    <div
+      className={`flex items-baseline gap-1.5 ${hideOnMobile ? "hidden sm:flex" : ""}`}
+    >
       <span className="text-[10px] uppercase tracking-wide text-(--color-text-dim)">
         {label}
       </span>

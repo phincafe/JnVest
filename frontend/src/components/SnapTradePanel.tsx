@@ -137,35 +137,39 @@ export function SnapTradePanel({ refreshNonce }: { refreshNonce: number }) {
 
   return (
     <section className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-medium text-(--color-text-dim)">
           Brokerages
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             onClick={syncToWatchlist}
             disabled={busy || needsCfg || (auths?.length ?? 0) === 0}
             title="Add every stock + option underlying you hold to the watchlist"
-            className="flex items-center gap-1 rounded-md border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-panel-2) disabled:opacity-50"
+            className="flex items-center gap-1 rounded-md border border-(--color-border) px-2 py-1.5 text-xs hover:bg-(--color-panel-2) disabled:opacity-50"
           >
-            <ListPlus size={12} /> Sync to watchlist
+            <ListPlus size={12} />
+            <span className="hidden sm:inline">Sync to watchlist</span>
+            <span className="sm:hidden">Sync</span>
           </button>
           <button
             onClick={load}
             disabled={busy}
-            className="flex items-center gap-1 rounded-md border border-(--color-border) px-2 py-1 text-xs text-(--color-text-dim) hover:text-(--color-text)"
+            className="flex items-center gap-1 rounded-md border border-(--color-border) px-2 py-1.5 text-xs text-(--color-text-dim) hover:text-(--color-text)"
             aria-label="Refresh"
             title={isRefreshing ? "Refreshing in background…" : "Refresh now"}
           >
-            <RefreshCcw size={12} className={isRefreshing ? "animate-spin" : ""} />{" "}
-            Refresh
+            <RefreshCcw size={12} className={isRefreshing ? "animate-spin" : ""} />
+            <span className="hidden sm:inline">Refresh</span>
           </button>
           <button
             onClick={connect}
             disabled={busy || needsCfg}
-            className="flex items-center gap-1 rounded-md bg-(--color-accent) px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+            className="flex items-center gap-1 rounded-md bg-(--color-accent) px-2.5 py-1.5 text-xs font-medium text-white disabled:opacity-50 sm:px-3"
           >
-            <ExternalLink size={12} /> Connect broker
+            <ExternalLink size={12} />
+            <span className="hidden sm:inline">Connect broker</span>
+            <span className="sm:hidden">Connect</span>
           </button>
         </div>
       </div>
@@ -372,10 +376,10 @@ function Chip({
       <div className="text-[10px] uppercase tracking-wide text-(--color-text-dim)">
         {subtitle}
       </div>
-      <div className="mt-1 flex items-baseline justify-between gap-2 tabular-nums">
+      <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 tabular-nums">
         <span className="text-base font-semibold">{amount}</span>
         {pl != null && (
-          <span className={`text-[11px] ${changeClass(pl)}`}>
+          <span className={`whitespace-nowrap text-[11px] ${changeClass(pl)}`}>
             {pl >= 0 ? "+" : "-"}${fmtPrice(Math.abs(pl))}
             {plPct != null && ` (${fmtPct(plPct)})`}
           </span>
@@ -545,17 +549,17 @@ function TotalsCard({ totals }: { totals: SnapTradeHoldings["totals"] }) {
     },
   ];
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
       {cards.map((c) => (
         <div
           key={c.label}
-          className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4"
+          className="rounded-xl border border-(--color-border) bg-(--color-panel) p-3 sm:p-4"
         >
-          <div className="text-xs uppercase tracking-wide text-(--color-text-dim)">
+          <div className="text-[10px] uppercase tracking-wide text-(--color-text-dim) sm:text-xs">
             {c.label}
           </div>
           <div
-            className={`mt-1 text-xl font-semibold tabular-nums ${
+            className={`mt-1 break-words text-base font-semibold tabular-nums sm:text-xl ${
               c.tone === "pl" ? changeClass(totals.unrealized_pl) : ""
             }`}
           >
