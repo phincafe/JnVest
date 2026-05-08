@@ -44,7 +44,7 @@ const tToTime = (t: string): Time =>
 export function IndexChart() {
   const [symbol, setSymbol] = useState("SPY");
   const [interval, setInterval] = useState("5Min");
-  const [chartType, setChartType] = useState<"area" | "candle">("area");
+  const [chartType, setChartType] = useState<"area" | "candle">("candle");
 
   const { data: freshData, isFetching } = useCachedFetch<Resp>(
     `intraday:${symbol}:${interval}`,
