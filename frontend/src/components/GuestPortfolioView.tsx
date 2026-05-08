@@ -101,19 +101,20 @@ export function GuestPortfolioView({ holdings }: { holdings: SnapTradeHoldings }
         cashPct={holdings.totals?.cash_pct ?? null}
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.6fr)]">
         <CategoryCard
           title="Options"
-          subtitle={`${optionPctOfPortfolio.toFixed(1)}% of portfolio · ${holdings.options.length} contract${holdings.options.length === 1 ? "" : "s"}`}
+          subtitle={`${optionPctOfPortfolio.toFixed(1)}% of invested · ${holdings.options.length} contract${holdings.options.length === 1 ? "" : "s"}`}
           slices={optionSlices}
           palette={OPTION_PALETTE}
         />
         <CategoryCard
           title="Stocks"
-          subtitle={`${stockPctOfPortfolio.toFixed(1)}% of portfolio · ${holdings.positions.length} holding${holdings.positions.length === 1 ? "" : "s"}`}
+          subtitle={`${stockPctOfPortfolio.toFixed(1)}% of invested · ${holdings.positions.length} holding${holdings.positions.length === 1 ? "" : "s"}`}
           slices={stockSlices}
           palette={STOCK_PALETTE}
         />
+        <CashCard cashPct={holdings.totals?.cash_pct ?? null} />
       </div>
 
       {holdings.options.length > 0 && (
@@ -267,6 +268,40 @@ function LegendItem({ color, label, pct }: { color: string; label: string; pct: 
       <span className="text-(--color-text-dim)">{label}</span>
       <span className="font-medium tabular-nums text-(--color-text)">{pct.toFixed(2)}%</span>
     </span>
+  );
+}
+
+function CashCard({ cashPct }: { cashPct: number | null }) {
+  return (
+    <div className="flex flex-col rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
+      <header className="mb-3">
+        <h3 className="text-base font-semibold">Cash</h3>
+        <p className="text-xs text-(--color-text-dim)">
+          {cashPct != null
+            ? `${cashPct.toFixed(1)}% of portfolio · awaiting deployment`
+            : "—"}
+        </p>
+      </header>
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 py-4">
+        {/* Big donut showing cash vs invested for visual parity with the
+            other two cards. Pure CSS conic-gradient — no Recharts needed. */}
+        <div
+          className="relative h-32 w-32 rounded-full"
+          style={{
+            background: `conic-gradient(rgb(16 185 129 / 0.7) 0% ${cashPct ?? 0}%, #1a1f2e ${cashPct ?? 0}% 100%)`,
+          }}
+        >
+          <div className="absolute inset-3 flex items-center justify-center rounded-full bg-(--color-panel)">
+            <span className="text-2xl font-semibold tabular-nums">
+              {cashPct != null ? `${cashPct.toFixed(1)}%` : "—"}
+            </span>
+          </div>
+        </div>
+        <p className="text-center text-[11px] text-(--color-text-dim)">
+          Idle capital — not deployed in stocks or options.
+        </p>
+      </div>
+    </div>
   );
 }
 
