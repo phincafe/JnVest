@@ -26,7 +26,8 @@ def _impact_label(raw: str | None) -> str:
 async def today(db: Session = Depends(get_db)) -> dict[str, Any]:
     watchlist = {r.symbol for r in db.query(WatchlistTicker).all()}
     today_iso = datetime.utcnow().strftime("%Y-%m-%d")
-    end_iso = (datetime.utcnow() + timedelta(days=10)).strftime("%Y-%m-%d")
+    econ_end_iso = (datetime.utcnow() + timedelta(days=10)).strftime("%Y-%m-%d")
+    earnings_end_iso = (datetime.utcnow() + timedelta(days=20)).strftime("%Y-%m-%d")
 
     econ_warning: str | None = None
     earnings_warning: str | None = None
@@ -46,7 +47,7 @@ async def today(db: Session = Depends(get_db)) -> dict[str, Any]:
         if e.get("country") != "US":
             continue
         when = (e.get("time") or "")[:10]
-        if not when or when < today_iso or when > end_iso:
+        if not when or when < today_iso or when > econ_end_iso:
             continue
         impact = _impact_label(e.get("impact"))
         if impact == "low" and when != today_iso:
@@ -68,7 +69,7 @@ async def today(db: Session = Depends(get_db)) -> dict[str, Any]:
     econ.sort(key=lambda x: (x.get("time") or ""))
 
     try:
-        earn_raw = await finnhub.earnings_calendar(days_ahead=10)
+        earn_raw = await finnhub.earnings_calendar(days_ahead=20)
     except RuntimeError as e:
         earn_raw = []
         earnings_warning = str(e)
@@ -82,7 +83,7 @@ async def today(db: Session = Depends(get_db)) -> dict[str, Any]:
         if sym not in watchlist:
             continue
         d = e.get("date")
-        if d and d > end_iso:
+        if d and d > earnings_end_iso:
             continue
         earnings.append(
             {

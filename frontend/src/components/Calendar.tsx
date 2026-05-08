@@ -173,7 +173,7 @@ function EarningsCard({ data }: { data: CalendarResponse | null }) {
   return (
     <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
       <h3 className="mb-3 text-xs uppercase tracking-wide text-(--color-text-dim)">
-        Watchlist earnings (next 10d)
+        Watchlist earnings (next 20d)
       </h3>
       {!data ? (
         <Skeleton className="h-24 w-full" />
@@ -181,7 +181,7 @@ function EarningsCard({ data }: { data: CalendarResponse | null }) {
         <p className="text-sm text-(--color-text-dim)">{data.earnings_warning}</p>
       ) : groups.length === 0 ? (
         <p className="text-sm text-(--color-text-dim)">
-          No watchlist tickers report earnings in the next 10 days.
+          No watchlist tickers report earnings in the next 20 days.
         </p>
       ) : (
         <ul className="divide-y divide-(--color-border)/60">
