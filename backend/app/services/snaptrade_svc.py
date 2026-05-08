@@ -70,15 +70,43 @@ def remove_authorization(user: SnapTradeUser, authorization_id: str) -> None:
 def all_holdings(user: SnapTradeUser) -> list[dict[str, Any]]:
     """Aggregated holdings across all connected accounts.
 
-    Returns a list of {account, balances, positions, option_positions, orders, total_value} dicts.
+    NOTE: SnapTrade deprecated the bulk `get_all_user_holdings` endpoint for
+    accounts created after 2026-04-25 (returns 410 Gone). We now list accounts
+    first, then fetch holdings per account and stitch them into the same
+    {account, balances, positions, option_positions, orders} shape the rest of
+    the codebase expects.
     """
-    resp = _client().account_information.get_all_user_holdings(
+    client = _client()
+    accounts_resp = client.account_information.list_user_accounts(
         user_id=user.user_id, user_secret=user.user_secret
     )
-    body = resp.body if hasattr(resp, "body") else resp
-    if not isinstance(body, list):
-        body = [body]
-    return [_to_dict(item) for item in body]
+    accounts = accounts_resp.body if hasattr(accounts_resp, "body") else accounts_resp
+    if not isinstance(accounts, list):
+        accounts = [accounts]
+
+    out: list[dict[str, Any]] = []
+    for acct in accounts:
+        acct_id = acct.get("id") if isinstance(acct, dict) else getattr(acct, "id", None)
+        if not acct_id:
+            continue
+        try:
+            h_resp = client.account_information.get_user_holdings(
+                user_id=user.user_id,
+                user_secret=user.user_secret,
+                account_id=acct_id,
+            )
+            h_body = h_resp.body if hasattr(h_resp, "body") else h_resp
+            entry = _to_dict(h_body)
+        except Exception as e:
+            # If one account errors, surface it but don't kill the whole response.
+            entry = {"error": str(e)}
+        # Ensure the account block is present (sometimes get_user_holdings already
+        # nests it, but if not, fall back to the list-accounts version).
+        if "account" not in entry:
+            entry["account"] = _to_dict(acct)
+        out.append(entry)
+
+    return out
 
 
 def _to_dict(obj: Any) -> Any:
