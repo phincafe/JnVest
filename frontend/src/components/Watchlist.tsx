@@ -1,5 +1,4 @@
 import {
-  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -8,7 +7,8 @@ import {
 } from "react";
 import { ArrowDown, ArrowUp, Trash2, Wifi, WifiOff, X } from "lucide-react";
 import { api, ApiError } from "../api/client";
-import type { WatchlistQuotesResponse, WatchlistRow } from "../api/types";
+import type { WatchlistQuotesResponse } from "../api/types";
+import { clearCacheKey, useCachedFetch } from "../hooks/useCachedFetch";
 import { useLiveQuotes, type StreamStatus } from "../hooks/useLiveQuotes";
 import { changeClass, fmtPct, fmtPrice } from "../lib/format";
 import { RangeBar } from "./RangeBar";
@@ -78,14 +78,27 @@ type SortKey =
   | "rsi14"
   | "earnings_in_days";
 
+const CACHE_KEY = "watchlist:quotes";
+
 export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
-  const [rows, setRows] = useState<WatchlistRow[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [adding, setAdding] = useState("");
   const [busy, setBusy] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("symbol");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const { quotes: live, status: streamStatus } = useLiveQuotes();
+
+  // Stale-while-revalidate cache: subsequent visits to the Watchlist tab
+  // show cached rows immediately and refresh in the background.
+  const cache = useCachedFetch<WatchlistQuotesResponse>(
+    CACHE_KEY,
+    () => api.get("/watchlist/quotes"),
+    { refreshMs: REFRESH_MS, staleAfterMs: 30_000 },
+  );
+  const rows = cache.data?.rows ?? null;
+  useEffect(() => {
+    if (cache.error) setErr(cache.error);
+  }, [cache.error]);
 
   const sortedRows = useMemo(() => {
     if (!rows) return null;
@@ -116,21 +129,17 @@ export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
     }
   };
 
-  const load = useCallback(async () => {
-    try {
-      const r = await api.get<WatchlistQuotesResponse>("/watchlist/quotes");
-      setRows(r.rows);
-      setErr(null);
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.detail : (e as Error).message);
-    }
-  }, []);
+  const load = () => {
+    clearCacheKey(CACHE_KEY);
+    cache.refetch();
+  };
 
+  // External "refresh" button bumps refreshNonce; force a fresh pull.
   useEffect(() => {
-    load();
-    const id = setInterval(load, REFRESH_MS);
-    return () => clearInterval(id);
-  }, [load, refreshNonce]);
+    if (refreshNonce === 0) return;
+    cache.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshNonce]);
 
   const onAdd = async (e: FormEvent) => {
     e.preventDefault();

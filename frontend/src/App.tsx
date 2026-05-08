@@ -3,6 +3,7 @@ import { Briefcase, CalendarDays, LineChart, Sun } from "lucide-react";
 import { api } from "./api/client";
 import type { AuthStatus, WatchlistTicker } from "./api/types";
 import { CommandPalette } from "./components/CommandPalette";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Header } from "./components/Header";
 import { LoginModal } from "./components/Login";
 import { Skeleton } from "./components/Skeleton";
@@ -113,22 +114,27 @@ export function App() {
       />
       <Tabs tabs={TABS} active={active} onChange={setActive} />
 
-      <Suspense fallback={<TabSkeleton />}>
-        {active === "morning" && (
-          <MorningTab refreshNonce={refreshNonce} isGuest={role === "guest"} />
-        )}
-        {active === "watchlist" && (
-          <WatchlistTab
-            refreshNonce={refreshNonce}
-            requestedSymbol={requestedSymbol}
-            onConsumedRequestedSymbol={() => setRequestedSymbol(null)}
-          />
-        )}
-        {active === "portfolio" && (
-          <PortfolioTab refreshNonce={refreshNonce} isGuest={role === "guest"} />
-        )}
-        {active === "calendar" && <CalendarTab refreshNonce={refreshNonce} />}
-      </Suspense>
+      <ErrorBoundary key={active}>
+        <Suspense fallback={<TabSkeleton />}>
+          {active === "morning" && (
+            <MorningTab refreshNonce={refreshNonce} isGuest={role === "guest"} />
+          )}
+          {active === "watchlist" && (
+            <WatchlistTab
+              refreshNonce={refreshNonce}
+              requestedSymbol={requestedSymbol}
+              onConsumedRequestedSymbol={() => setRequestedSymbol(null)}
+            />
+          )}
+          {active === "portfolio" && (
+            <PortfolioTab
+              refreshNonce={refreshNonce}
+              isGuest={role === "guest"}
+            />
+          )}
+          {active === "calendar" && <CalendarTab refreshNonce={refreshNonce} />}
+        </Suspense>
+      </ErrorBoundary>
 
       <MobileTabBar tabs={TABS} active={active} onChange={setActive} />
 
