@@ -62,6 +62,98 @@ async def sectors() -> dict[str, Any]:
     return {"tiles": tiles}
 
 
+_MOVERS_UNIVERSE = [
+    # Liquid mega-caps + popular options names — keeps the call to ~50 symbols.
+    "AAPL",
+    "MSFT",
+    "GOOGL",
+    "GOOG",
+    "AMZN",
+    "NVDA",
+    "META",
+    "TSLA",
+    "BRK.B",
+    "V",
+    "JNJ",
+    "WMT",
+    "JPM",
+    "MA",
+    "PG",
+    "AVGO",
+    "HD",
+    "CVX",
+    "MRK",
+    "ABBV",
+    "PEP",
+    "KO",
+    "BAC",
+    "PFE",
+    "TMO",
+    "COST",
+    "DIS",
+    "ABT",
+    "CSCO",
+    "ACN",
+    "MCD",
+    "DHR",
+    "ADBE",
+    "VZ",
+    "CRM",
+    "WFC",
+    "AMD",
+    "NFLX",
+    "INTC",
+    "QCOM",
+    "ORCL",
+    "PYPL",
+    "T",
+    "CMCSA",
+    "NKE",
+    "COIN",
+    "PLTR",
+    "SOFI",
+    "RIVN",
+    "RBLX",
+]
+
+
+@router.get("/movers")
+async def movers(limit: int = 5) -> dict[str, Any]:
+    """Top gainers + losers across a curated universe of liquid mega-caps and
+    popular options names — Finviz-style 'top of the morning' panel."""
+    try:
+        trades = await alpaca.latest_trades(_MOVERS_UNIVERSE)
+        bars = await alpaca.daily_bars(_MOVERS_UNIVERSE, days=5)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
+
+    rows: list[dict[str, Any]] = []
+    for sym in _MOVERS_UNIVERSE:
+        sym_bars = bars.get(sym, [])
+        trade = trades.get(sym, {})
+        if not sym_bars or not trade:
+            continue
+        last = float(trade.get("p") or 0)
+        prev_close = float(sym_bars[-2]["c"]) if len(sym_bars) >= 2 else float(sym_bars[-1]["c"])
+        if not prev_close or not last:
+            continue
+        change = last - prev_close
+        pct = change / prev_close * 100.0
+        rows.append(
+            {
+                "symbol": sym,
+                "last": last,
+                "change": change,
+                "change_pct": pct,
+            }
+        )
+
+    rows.sort(key=lambda r: r["change_pct"], reverse=True)
+    gainers = rows[:limit]
+    losers = rows[-limit:][::-1]
+    return {"gainers": gainers, "losers": losers}
+
+
 @router.get("/macro")
 async def macro() -> dict[str, Any]:
     """VIXY (vol proxy) + UUP (dollar proxy). Native ^VIX/^TNX/DXY require yfinance."""

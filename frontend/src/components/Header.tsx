@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { LogOut, RefreshCcw } from "lucide-react";
 import { api } from "../api/client";
-import type { AccountSummary, SnapTradeHoldings } from "../api/types";
-import { changeClass, fmtPct, fmtPrice } from "../lib/format";
+import type { SnapTradeHoldings } from "../api/types";
+import { changeClass, fmtPrice } from "../lib/format";
 
 type Props = {
   isPaper: boolean;
@@ -13,28 +13,22 @@ type Props = {
 
 export function Header({ isPaper, refreshNonce, onRefresh, onLogout }: Props) {
   const [equity, setEquity] = useState<number | null>(null);
-  const [todayPL, setTodayPL] = useState<number | null>(null);
-  const [todayPLPct, setTodayPLPct] = useState<number | null>(null);
   const [unrealized, setUnrealized] = useState<number | null>(null);
+  const [cash, setCash] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      api
-        .get<SnapTradeHoldings>("/snaptrade/holdings")
-        .catch(() => null),
-      api.get<AccountSummary>("/positions/account").catch(() => null),
-    ]).then(([snap, alp]) => {
-      if (cancelled) return;
-      const snapEq = snap?.totals.equity ?? 0;
-      const alpEq = alp?.equity ?? 0;
-      setEquity((snapEq + alpEq) || null);
-      // Today's P/L from Alpaca only (SnapTrade doesn't expose intraday).
-      setTodayPL(alp?.today_pl ?? null);
-      setTodayPLPct(alp?.today_pl_pct ?? null);
-      // Unrealized P/L from SnapTrade.
-      setUnrealized(snap?.totals.unrealized_pl ?? null);
-    });
+    // Header reflects real broker holdings (SnapTrade) only.
+    // Alpaca's $100k paper money is for the order ticket, not your portfolio.
+    api
+      .get<SnapTradeHoldings>("/snaptrade/holdings")
+      .then((snap) => {
+        if (cancelled) return;
+        setEquity(snap?.totals.equity ?? null);
+        setUnrealized(snap?.totals.unrealized_pl ?? null);
+        setCash(snap?.totals.cash ?? null);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -59,16 +53,7 @@ export function Header({ isPaper, refreshNonce, onRefresh, onLogout }: Props) {
 
         <div className="flex items-center gap-5 text-xs sm:text-sm tabular-nums">
           <Stat label="Equity" value={equity != null ? `$${fmtPrice(equity)}` : "—"} />
-          <Stat
-            label="Today"
-            value={
-              todayPL != null
-                ? `${todayPL >= 0 ? "+" : "-"}$${fmtPrice(Math.abs(todayPL))}` +
-                  (todayPLPct != null ? ` (${fmtPct(todayPLPct)})` : "")
-                : "—"
-            }
-            tone={changeClass(todayPL)}
-          />
+          <Stat label="Cash" value={cash != null ? `$${fmtPrice(cash)}` : "—"} />
           <Stat
             label="Unrealized"
             value={

@@ -337,6 +337,28 @@ export type ManualPosition = {
   pl_pct: number | null;
 };
 
+export type AnalystRecommendation = {
+  strong_buy: number;
+  buy: number;
+  hold: number;
+  sell: number;
+  strong_sell: number;
+  total: number;
+  period: string | null;
+};
+
+export type Mover = {
+  symbol: string;
+  last: number;
+  change: number;
+  change_pct: number;
+};
+
+export type MoversResponse = {
+  gainers: Mover[];
+  losers: Mover[];
+};
+
 export type StockFundamentals = {
   symbol: string;
   next_earnings: string | null;
@@ -348,4 +370,7 @@ export type StockFundamentals = {
   market_cap: number | null;
   trailing_pe: number | null;
   forward_pe: number | null;
+  fifty_two_week_high: number | null;
+  fifty_two_week_low: number | null;
+  analyst_recommendation: AnalystRecommendation | null;
 };

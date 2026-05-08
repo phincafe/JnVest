@@ -102,9 +102,12 @@ async def stock_fundamentals(symbol: str) -> dict[str, Any]:
         "analyst_target_high": None,
         "analyst_target_low": None,
         "analyst_count": None,
+        "analyst_recommendation": None,  # latest period buy/hold/sell breakdown
         "market_cap": None,
         "trailing_pe": None,
         "forward_pe": None,
+        "fifty_two_week_high": None,
+        "fifty_two_week_low": None,
     }
 
     # --- Finnhub (preferred) ---
@@ -113,6 +116,8 @@ async def stock_fundamentals(symbol: str) -> dict[str, Any]:
         out["market_cap"] = metric.get("marketCapitalization")
         out["trailing_pe"] = metric.get("peTTM") or metric.get("peNormalizedAnnual")
         out["forward_pe"] = metric.get("peNTM") or metric.get("peExclExtraTTM")
+        out["fifty_two_week_high"] = metric.get("52WeekHigh")
+        out["fifty_two_week_low"] = metric.get("52WeekLow")
     except Exception:
         pass
     try:
@@ -121,6 +126,31 @@ async def stock_fundamentals(symbol: str) -> dict[str, Any]:
         out["analyst_target_high"] = pt.get("targetHigh")
         out["analyst_target_low"] = pt.get("targetLow")
         out["analyst_count"] = pt.get("numberOfAnalysts")
+    except Exception:
+        pass
+    # Recommendation trends: get latest-period buy/hold/sell breakdown + use the
+    # sum as the analyst count if price-target didn't include it.
+    try:
+        recs = await finnhub.recommendation_trends(sym)
+        if recs:
+            latest = recs[0]  # Finnhub orders newest-first
+            sb = int(latest.get("strongBuy") or 0)
+            b = int(latest.get("buy") or 0)
+            h = int(latest.get("hold") or 0)
+            s = int(latest.get("sell") or 0)
+            ss = int(latest.get("strongSell") or 0)
+            total = sb + b + h + s + ss
+            out["analyst_recommendation"] = {
+                "strong_buy": sb,
+                "buy": b,
+                "hold": h,
+                "sell": s,
+                "strong_sell": ss,
+                "total": total,
+                "period": latest.get("period"),
+            }
+            if not out["analyst_count"] and total:
+                out["analyst_count"] = total
     except Exception:
         pass
     try:
