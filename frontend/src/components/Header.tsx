@@ -9,9 +9,17 @@ type Props = {
   onRefresh: () => void;
   onLogout: () => void;
   onSearch?: () => void;
+  role?: "owner" | "guest" | null;
 };
 
-export function Header({ refreshNonce, onRefresh, onLogout, onSearch }: Props) {
+export function Header({
+  refreshNonce,
+  onRefresh,
+  onLogout,
+  onSearch,
+  role,
+}: Props) {
+  const isGuest = role === "guest";
   const [equity, setEquity] = useState<number | null>(null);
   const [invested, setInvested] = useState<number | null>(null);
   const [unrealized, setUnrealized] = useState<number | null>(null);
@@ -41,22 +49,36 @@ export function Header({ refreshNonce, onRefresh, onLogout, onSearch }: Props) {
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-2.5">
         <div className="flex items-center gap-3">
           <h1 className="text-base font-semibold tracking-tight">JnVest</h1>
+          {isGuest && (
+            <span
+              className="rounded bg-purple-500/30 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-purple-200"
+              title="Guest mode — read-only, $ amounts hidden"
+            >
+              Guest
+            </span>
+          )}
         </div>
 
-        <div className="flex items-center gap-5 text-xs sm:text-sm tabular-nums">
-          <Stat label="Equity" value={equity != null ? `$${fmtPrice(equity)}` : "—"} />
-          <Stat label="Invested" value={invested != null ? `$${fmtPrice(invested)}` : "—"} />
-          <Stat label="Cash" value={cash != null ? `$${fmtPrice(cash)}` : "—"} />
-          <Stat
-            label="Unrealized"
-            value={
-              unrealized != null
-                ? `${unrealized >= 0 ? "+" : "-"}$${fmtPrice(Math.abs(unrealized))}`
-                : "—"
-            }
-            tone={changeClass(unrealized)}
-          />
-        </div>
+        {isGuest ? (
+          <div className="text-xs text-(--color-text-dim)">
+            Viewing as guest · $ amounts hidden
+          </div>
+        ) : (
+          <div className="flex items-center gap-5 text-xs sm:text-sm tabular-nums">
+            <Stat label="Equity" value={equity != null ? `$${fmtPrice(equity)}` : "—"} />
+            <Stat label="Invested" value={invested != null ? `$${fmtPrice(invested)}` : "—"} />
+            <Stat label="Cash" value={cash != null ? `$${fmtPrice(cash)}` : "—"} />
+            <Stat
+              label="Unrealized"
+              value={
+                unrealized != null
+                  ? `${unrealized >= 0 ? "+" : "-"}$${fmtPrice(Math.abs(unrealized))}`
+                  : "—"
+              }
+              tone={changeClass(unrealized)}
+            />
+          </div>
+        )}
 
         <div className="flex items-center gap-1">
           {onSearch && (

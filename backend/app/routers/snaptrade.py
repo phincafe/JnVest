@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -294,8 +294,127 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _consolidate_for_guest(flat: dict[str, Any]) -> dict[str, Any]:
+    """Collapse duplicates so a guest sees ONE row per (ticker) for stocks and
+    ONE row per (underlying, type, strike, expiration) for options, no matter
+    how many accounts hold them. Per-position dollar fields are removed; %
+    allocation across the (anonymized) portfolio is kept."""
+    total_invested = max(
+        sum(p.get("market_value", 0) for p in flat["positions"])
+        + sum(o.get("market_value", 0) for o in flat["options"]),
+        1.0,
+    )
+
+    # ---- Stocks: collapse by ticker ----
+    stock_groups: dict[str, dict[str, Any]] = {}
+    for p in flat["positions"]:
+        t = p.get("ticker") or "—"
+        g = stock_groups.setdefault(
+            t,
+            {
+                "ticker": t,
+                "description": p.get("description"),
+                "_value": 0.0,
+                "_pl": 0.0,
+                "_cost": 0.0,
+            },
+        )
+        g["_value"] += p.get("market_value") or 0
+        g["_pl"] += p.get("unrealized_pl") or 0
+        if p.get("avg_cost") and p.get("quantity"):
+            g["_cost"] += p["avg_cost"] * p["quantity"]
+    consolidated_stocks = []
+    for g in stock_groups.values():
+        consolidated_stocks.append(
+            {
+                "ticker": g["ticker"],
+                "description": g["description"],
+                "allocation_pct": (g["_value"] / total_invested * 100) if total_invested else None,
+                "unrealized_pl_pct": ((g["_pl"] / g["_cost"] * 100) if g["_cost"] else None),
+            }
+        )
+    consolidated_stocks.sort(key=lambda x: x.get("allocation_pct") or 0, reverse=True)
+
+    # ---- Options: collapse by contract ----
+    opt_groups: dict[tuple, dict[str, Any]] = {}
+    for o in flat["options"]:
+        key = (
+            o.get("underlying"),
+            o.get("option_type"),
+            o.get("strike"),
+            o.get("expiration"),
+        )
+        g = opt_groups.setdefault(
+            key,
+            {
+                "underlying": o.get("underlying"),
+                "option_type": o.get("option_type"),
+                "strike": o.get("strike"),
+                "expiration": o.get("expiration"),
+                "_value": 0.0,
+                "_pl": 0.0,
+                "_cost": 0.0,
+            },
+        )
+        g["_value"] += o.get("market_value") or 0
+        g["_pl"] += o.get("unrealized_pl") or 0
+        if o.get("avg_cost") and o.get("quantity"):
+            g["_cost"] += o["avg_cost"] * o["quantity"] * 100
+    consolidated_options = []
+    for g in opt_groups.values():
+        consolidated_options.append(
+            {
+                "underlying": g["underlying"],
+                "option_type": g["option_type"],
+                "strike": g["strike"],
+                "expiration": g["expiration"],
+                "allocation_pct": (g["_value"] / total_invested * 100) if total_invested else None,
+                "unrealized_pl_pct": ((g["_pl"] / g["_cost"] * 100) if g["_cost"] else None),
+            }
+        )
+    consolidated_options.sort(key=lambda x: x.get("allocation_pct") or 0, reverse=True)
+
+    # ---- Orders: keep per-row for the activity feed but strip $ + qty ----
+    consolidated_orders = []
+    for o in flat["orders"]:
+        consolidated_orders.append(
+            {
+                "ticker": o.get("ticker"),
+                "is_option": o.get("is_option"),
+                "option_type": o.get("option_type"),
+                "strike": o.get("strike"),
+                "expiration": o.get("expiration"),
+                "action": o.get("action"),
+                "status": o.get("status"),
+                "time": o.get("time"),
+                "account_id": None,
+                "account": None,
+                "broker": None,
+                "total_quantity": None,
+                "filled_quantity": None,
+                "execution_price": None,
+            }
+        )
+
+    return {
+        "guest": True,
+        "accounts": [],  # Guests don't see per-account info — that would re-leak distribution.
+        "positions": consolidated_stocks,
+        "options": consolidated_options,
+        "orders": consolidated_orders,
+        "totals": {
+            "equity": None,
+            "invested": None,
+            "cash": None,
+            "cost_basis": None,
+            "unrealized_pl": None,
+            "market_value": None,
+        },
+    }
+
+
 @router.get("/holdings")
-def get_holdings(db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_holdings(request: Request, db: Session = Depends(get_db)) -> dict[str, Any]:
     try:
         user = snaptrade_svc.get_or_create_user(db)
         raw = snaptrade_svc.all_holdings(user)
@@ -315,6 +434,12 @@ def get_holdings(db: Session = Depends(get_db)) -> dict[str, Any]:
             aid = row.get("account_id")
             if aid and aid in aliases:
                 row["account"] = aliases[aid]
+
+    # Guest mode: consolidate duplicates across accounts and hide $ amounts.
+    from ..main import is_guest
+
+    if is_guest(request):
+        return _consolidate_for_guest(flat)
     return flat
 
 

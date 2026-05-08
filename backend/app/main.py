@@ -66,14 +66,28 @@ class LoginPayload(BaseModel):
     password: str
 
 
-def _is_authed(request: Request) -> bool:
+def _session_role(request: Request) -> str | None:
+    """Returns 'owner' | 'guest' | None."""
     token = request.cookies.get("jnvest_session")
     if not token:
-        return False
+        return None
     try:
-        return serializer.loads(token) == "ok"
+        val = serializer.loads(token)
     except BadSignature:
-        return False
+        return None
+    if val == "ok":
+        return "owner"
+    if val == "guest":
+        return "guest"
+    return None
+
+
+def _is_authed(request: Request) -> bool:
+    return _session_role(request) is not None
+
+
+def is_guest(request: Request) -> bool:
+    return _session_role(request) == "guest"
 
 
 @app.middleware("http")
@@ -83,14 +97,27 @@ async def auth_middleware(request: Request, call_next):
     is_public = path in PUBLIC_PATHS or path.startswith("/api/auth/")
     if is_api and not is_public and not _is_authed(request):
         return JSONResponse({"detail": "unauthorized"}, status_code=401)
+    # Guests get read-only: block any non-GET API.
+    if (
+        is_api
+        and not is_public
+        and is_guest(request)
+        and request.method not in ("GET", "HEAD", "OPTIONS")
+    ):
+        return JSONResponse({"detail": "guest mode is read-only"}, status_code=403)
     return await call_next(request)
 
 
 @app.post("/api/auth/login")
 async def login(payload: LoginPayload, response: Response) -> dict:
-    if payload.password != settings.app_password:
+    role: str
+    if payload.password == settings.app_password:
+        role = "owner"
+    elif settings.guest_password and payload.password == settings.guest_password:
+        role = "guest"
+    else:
         raise HTTPException(status_code=401, detail="invalid password")
-    token = serializer.dumps("ok")
+    token = serializer.dumps("ok" if role == "owner" else "guest")
     response.set_cookie(
         "jnvest_session",
         token,
@@ -99,7 +126,7 @@ async def login(payload: LoginPayload, response: Response) -> dict:
         samesite="lax",
         secure=not settings.database_url.startswith("sqlite"),
     )
-    return {"ok": True}
+    return {"ok": True, "role": role}
 
 
 @app.post("/api/auth/logout")
@@ -110,7 +137,13 @@ async def logout(response: Response) -> dict:
 
 @app.get("/api/auth/status")
 async def auth_status(request: Request) -> dict:
-    return {"authed": _is_authed(request), "is_paper": settings.is_paper}
+    role = _session_role(request)
+    return {
+        "authed": role is not None,
+        "is_paper": settings.is_paper,
+        "role": role,
+        "guest_enabled": bool(settings.guest_password),
+    }
 
 
 @app.get("/api/health")

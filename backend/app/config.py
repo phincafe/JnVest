@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     )
 
     app_password: str = "changeme-please"
+    # Optional read-only guest password. When set, friends/family can log in
+    # with this password and see everything EXCEPT $ amounts and quantities.
+    guest_password: str = ""
     session_secret: str = "dev-secret-change-me"
 
     database_url: str = "sqlite:///./jnvest.db"

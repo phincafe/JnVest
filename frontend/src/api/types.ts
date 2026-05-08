@@ -1,6 +1,8 @@
 export type AuthStatus = {
   authed: boolean;
   is_paper: boolean;
+  role: "owner" | "guest" | null;
+  guest_enabled: boolean;
 };
 
 export type IndexTile = {

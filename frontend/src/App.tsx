@@ -22,6 +22,7 @@ const TABS: TabDef[] = [
 
 export function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
+  const [role, setRole] = useState<"owner" | "guest" | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [active, setActive] = useState<string>(() =>
     typeof window !== "undefined"
@@ -36,8 +37,10 @@ export function App() {
     try {
       const s = await api.get<AuthStatus>("/auth/status");
       setAuthed(s.authed);
+      setRole(s.role);
     } catch {
       setAuthed(false);
+      setRole(null);
     }
   }, []);
 
@@ -105,11 +108,14 @@ export function App() {
         onRefresh={() => setRefreshNonce((n) => n + 1)}
         onLogout={onLogout}
         onSearch={() => setPaletteOpen(true)}
+        role={role}
       />
       <Tabs tabs={TABS} active={active} onChange={setActive} />
 
       <Suspense fallback={<TabSkeleton />}>
-        {active === "morning" && <MorningTab refreshNonce={refreshNonce} />}
+        {active === "morning" && (
+          <MorningTab refreshNonce={refreshNonce} isGuest={role === "guest"} />
+        )}
         {active === "watchlist" && (
           <WatchlistTab
             refreshNonce={refreshNonce}
