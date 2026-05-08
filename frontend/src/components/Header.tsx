@@ -5,13 +5,12 @@ import type { SnapTradeHoldings } from "../api/types";
 import { changeClass, fmtPrice } from "../lib/format";
 
 type Props = {
-  isPaper: boolean;
   refreshNonce: number;
   onRefresh: () => void;
   onLogout: () => void;
 };
 
-export function Header({ isPaper, refreshNonce, onRefresh, onLogout }: Props) {
+export function Header({ refreshNonce, onRefresh, onLogout }: Props) {
   const [equity, setEquity] = useState<number | null>(null);
   const [invested, setInvested] = useState<number | null>(null);
   const [unrealized, setUnrealized] = useState<number | null>(null);
@@ -41,16 +40,6 @@ export function Header({ isPaper, refreshNonce, onRefresh, onLogout }: Props) {
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-2.5">
         <div className="flex items-center gap-3">
           <h1 className="text-base font-semibold tracking-tight">JnVest</h1>
-          <span
-            className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
-              isPaper
-                ? "bg-yellow-600/30 text-yellow-200"
-                : "bg-red-600/40 text-red-100"
-            }`}
-            title={isPaper ? "Paper trading" : "LIVE — order ticket disabled"}
-          >
-            {isPaper ? "Paper" : "Live"}
-          </span>
         </div>
 
         <div className="flex items-center gap-5 text-xs sm:text-sm tabular-nums">

@@ -9,7 +9,7 @@ import type {
   SnapTradeOrder,
   SnapTradeStock,
 } from "../api/types";
-import { useCachedFetch, clearCacheKey } from "../hooks/useCachedFetch";
+import { useCachedFetch, clearCacheKey, mutateCache } from "../hooks/useCachedFetch";
 import { changeClass, fmtPct, fmtPrice } from "../lib/format";
 import { Skeleton } from "./Skeleton";
 
@@ -514,6 +514,30 @@ function AccountSection({
     setEditing(true);
   };
   const cancelEdit = () => setEditing(false);
+  const applyRename = (newName: string) => {
+    // Optimistic in-place cache update so the panel doesn't blank to skeleton.
+    mutateCache<SnapTradeHoldings>("snaptrade:holdings", (h) => {
+      if (!h) return null;
+      return {
+        ...h,
+        accounts: h.accounts.map((a) =>
+          a.id === account.id
+            ? { ...a, name: newName, original_name: a.original_name ?? a.name }
+            : a,
+        ),
+        positions: h.positions.map((p) =>
+          p.account_id === account.id ? { ...p, account: newName } : p,
+        ),
+        options: h.options.map((o) =>
+          o.account_id === account.id ? { ...o, account: newName } : o,
+        ),
+        orders: h.orders.map((o) =>
+          o.account_id === account.id ? { ...o, account: newName } : o,
+        ),
+      };
+    });
+  };
+
   const save = async () => {
     const name = draft.trim();
     if (!name || name === account.name) {
@@ -523,7 +547,7 @@ function AccountSection({
     setSaving(true);
     try {
       await api.put(`/snaptrade/account/${account.id}/nickname`, { nickname: name });
-      clearCacheKey("snaptrade:holdings");
+      applyRename(name);
       setEditing(false);
     } catch (e) {
       console.error("rename failed", e);
@@ -535,12 +559,34 @@ function AccountSection({
     setSaving(true);
     try {
       await api.delete(`/snaptrade/account/${account.id}/nickname`);
-      clearCacheKey("snaptrade:holdings");
+      // Restore original name if we have it.
+      mutateCache<SnapTradeHoldings>("snaptrade:holdings", (h) => {
+        if (!h) return null;
+        const originalName = account.original_name ?? account.name;
+        return {
+          ...h,
+          accounts: h.accounts.map((a) =>
+            a.id === account.id
+              ? { ...a, name: originalName, original_name: undefined }
+              : a,
+          ),
+          positions: h.positions.map((p) =>
+            p.account_id === account.id ? { ...p, account: originalName } : p,
+          ),
+          options: h.options.map((o) =>
+            o.account_id === account.id ? { ...o, account: originalName } : o,
+          ),
+          orders: h.orders.map((o) =>
+            o.account_id === account.id ? { ...o, account: originalName } : o,
+          ),
+        };
+      });
       setEditing(false);
     } finally {
       setSaving(false);
     }
   };
+  void clearCacheKey;
 
   return (
     <div className="rounded-xl border border-(--color-border) bg-(--color-panel)">

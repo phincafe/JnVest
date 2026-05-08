@@ -16,7 +16,6 @@ from .routers import (
     calendar,
     market,
     options,
-    orders,
     plaid,
     positions,
     snaptrade,
@@ -135,7 +134,8 @@ app.include_router(stock.router, prefix="/api")
 app.include_router(options.router, prefix="/api")
 app.include_router(calendar.router, prefix="/api")
 app.include_router(positions.router, prefix="/api")
-app.include_router(orders.router, prefix="/api")
+# orders.router is intentionally not mounted: paper-trading order ticket was
+# removed from the UI. Restore by re-adding `app.include_router(orders.router, prefix="/api")`.
 app.include_router(plaid.router, prefix="/api")
 app.include_router(snaptrade.router, prefix="/api")
 

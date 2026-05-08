@@ -21,7 +21,6 @@ const TABS: TabDef[] = [
 
 export function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
-  const [isPaper, setIsPaper] = useState(true);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [active, setActive] = useState<string>(() =>
     typeof window !== "undefined"
@@ -33,7 +32,6 @@ export function App() {
     try {
       const s = await api.get<AuthStatus>("/auth/status");
       setAuthed(s.authed);
-      setIsPaper(s.is_paper);
     } catch {
       setAuthed(false);
     }
@@ -71,7 +69,6 @@ export function App() {
   return (
     <div className="min-h-screen">
       <Header
-        isPaper={isPaper}
         refreshNonce={refreshNonce}
         onRefresh={() => setRefreshNonce((n) => n + 1)}
         onLogout={onLogout}
@@ -81,13 +78,7 @@ export function App() {
       <Suspense fallback={<TabSkeleton />}>
         {active === "morning" && <MorningTab refreshNonce={refreshNonce} />}
         {active === "watchlist" && <WatchlistTab refreshNonce={refreshNonce} />}
-        {active === "portfolio" && (
-          <PortfolioTab
-            refreshNonce={refreshNonce}
-            isPaper={isPaper}
-            onSubmittedOrder={() => setRefreshNonce((n) => n + 1)}
-          />
-        )}
+        {active === "portfolio" && <PortfolioTab refreshNonce={refreshNonce} />}
         {active === "calendar" && <CalendarTab refreshNonce={refreshNonce} />}
       </Suspense>
     </div>

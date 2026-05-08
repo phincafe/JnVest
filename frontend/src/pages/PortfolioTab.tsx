@@ -1,21 +1,11 @@
-import { OrderTicket } from "../components/OrderTicket";
-import { Positions } from "../components/Positions";
+import { ManualPositions } from "../components/ManualPositions";
 import { SnapTradePanel } from "../components/SnapTradePanel";
 
-export default function PortfolioTab({
-  refreshNonce,
-  isPaper,
-  onSubmittedOrder,
-}: {
-  refreshNonce: number;
-  isPaper: boolean;
-  onSubmittedOrder: () => void;
-}) {
+export default function PortfolioTab({ refreshNonce }: { refreshNonce: number }) {
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-4">
       <SnapTradePanel refreshNonce={refreshNonce} />
-      <Positions refreshNonce={refreshNonce} />
-      <OrderTicket isPaper={isPaper} onSubmitted={onSubmittedOrder} />
+      <ManualPositions refreshNonce={refreshNonce} />
     </div>
   );
 }

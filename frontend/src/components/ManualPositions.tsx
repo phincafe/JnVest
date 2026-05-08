@@ -1,58 +1,25 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Trash2, Upload } from "lucide-react";
 import { api, ApiError } from "../api/client";
-import type {
-  AccountSummary,
-  AlpacaOrder,
-  AlpacaPosition,
-  ManualPosition,
-} from "../api/types";
+import type { ManualPosition } from "../api/types";
 import { changeClass, fmtPct, fmtPrice } from "../lib/format";
 import { Skeleton } from "./Skeleton";
 
 const REFRESH_MS = 60_000;
+const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
 
-const STATUS_COLOR: Record<string, string> = {
-  filled: "bg-(--color-up)/20 text-(--color-up)",
-  partially_filled: "bg-yellow-500/20 text-yellow-200",
-  canceled: "bg-(--color-text-dim)/20 text-(--color-text-dim)",
-  pending_new: "bg-blue-500/20 text-blue-200",
-  new: "bg-blue-500/20 text-blue-200",
-  rejected: "bg-(--color-down)/20 text-(--color-down)",
-};
-
-export function Positions({ refreshNonce }: { refreshNonce: number }) {
-  const [acct, setAcct] = useState<AccountSummary | null>(null);
-  const [alpaca, setAlpaca] = useState<AlpacaPosition[] | null>(null);
-  const [orders, setOrders] = useState<AlpacaOrder[] | null>(null);
-  const [manual, setManual] = useState<ManualPosition[] | null>(null);
+/**
+ * Manually-tracked positions for things SnapTrade can't reach (e.g.,
+ * 401k holdings, crypto, employer stock plans, private investments).
+ */
+export function ManualPositions({ refreshNonce }: { refreshNonce: number }) {
+  const [rows, setRows] = useState<ManualPosition[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [needsCfg, setNeedsCfg] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [a, p, o, m] = await Promise.all([
-        api.get<AccountSummary>("/positions/account").catch((e) => {
-          if (e instanceof ApiError && e.status === 400) {
-            setNeedsCfg(true);
-            return null;
-          }
-          throw e;
-        }),
-        api
-          .get<{ positions: AlpacaPosition[] }>("/positions/alpaca")
-          .then((r) => r.positions)
-          .catch(() => []),
-        api
-          .get<{ orders: AlpacaOrder[] }>("/positions/orders")
-          .then((r) => r.orders)
-          .catch(() => []),
-        api.get<ManualPosition[]>("/positions/manual"),
-      ]);
-      setAcct(a);
-      setAlpaca(p);
-      setOrders(o);
-      setManual(m);
+      const data = await api.get<ManualPosition[]>("/positions/manual");
+      setRows(data);
       setErr(null);
     } catch (e) {
       setErr(e instanceof ApiError ? e.detail : (e as Error).message);
@@ -67,156 +34,21 @@ export function Positions({ refreshNonce }: { refreshNonce: number }) {
 
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-medium text-(--color-text-dim)">Positions</h2>
+      <h2 className="text-sm font-medium text-(--color-text-dim)">
+        Manual positions
+        <span className="ml-2 text-xs font-normal text-(--color-text-dim)/70">
+          for holdings outside SnapTrade (401k, crypto, ESPP, private…)
+        </span>
+      </h2>
       {err && (
         <div className="rounded-md border border-(--color-down)/40 bg-(--color-panel) p-2 text-xs text-(--color-down)">
           {err}
         </div>
       )}
-
-      {needsCfg ? (
-        <div className="rounded-xl border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm text-yellow-200">
-          Alpaca not configured — add paper API keys to see account / positions / orders.
-        </div>
-      ) : (
-        <AccountCards acct={acct} />
-      )}
-
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <AlpacaPositionsCard rows={alpaca} />
-        <RecentOrdersCard rows={orders} />
-      </div>
-
-      <ManualPositionsCard rows={manual} onChange={load} />
+      <ManualPositionsCard rows={rows} onChange={load} />
     </section>
   );
 }
-
-function AccountCards({ acct }: { acct: AccountSummary | null }) {
-  if (!acct) {
-    return (
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-20" />
-        ))}
-      </div>
-    );
-  }
-  const cards: { label: string; value: string; tone?: "pl" }[] = [
-    { label: "Equity", value: `$${fmtPrice(acct.equity)}` },
-    {
-      label: "Today's P&L",
-      value: `${acct.today_pl >= 0 ? "+" : "-"}$${fmtPrice(Math.abs(acct.today_pl))} (${fmtPct(acct.today_pl_pct)})`,
-      tone: "pl",
-    },
-    { label: "Cash", value: `$${fmtPrice(acct.cash)}` },
-    { label: "Buying power", value: `$${fmtPrice(acct.buying_power)}` },
-  ];
-  return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      {cards.map((c) => (
-        <div
-          key={c.label}
-          className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4"
-        >
-          <div className="text-xs uppercase tracking-wide text-(--color-text-dim)">
-            {c.label}
-          </div>
-          <div
-            className={`mt-1 text-xl font-semibold tabular-nums ${
-              c.tone === "pl" ? changeClass(acct.today_pl) : ""
-            }`}
-          >
-            {c.value}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function AlpacaPositionsCard({ rows }: { rows: AlpacaPosition[] | null }) {
-  return (
-    <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
-      <h3 className="mb-3 text-xs uppercase tracking-wide text-(--color-text-dim)">
-        Alpaca positions
-      </h3>
-      {!rows ? (
-        <Skeleton className="h-32 w-full" />
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-(--color-text-dim)">No open positions.</p>
-      ) : (
-        <table className="w-full text-sm">
-          <thead className="text-xs text-(--color-text-dim)">
-            <tr>
-              <th className="text-left font-normal">Symbol</th>
-              <th className="text-right font-normal">Qty</th>
-              <th className="text-right font-normal">Avg</th>
-              <th className="text-right font-normal">Last</th>
-              <th className="text-right font-normal">P&L</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((p) => (
-              <tr key={p.symbol} className="border-t border-(--color-border)">
-                <td className="py-1 font-medium">{p.symbol}</td>
-                <td className="py-1 text-right tabular-nums">{p.qty}</td>
-                <td className="py-1 text-right tabular-nums">
-                  ${fmtPrice(p.avg_entry_price)}
-                </td>
-                <td className="py-1 text-right tabular-nums">
-                  ${fmtPrice(p.current_price)}
-                </td>
-                <td
-                  className={`py-1 text-right tabular-nums ${changeClass(p.unrealized_pl)}`}
-                >
-                  {p.unrealized_pl >= 0 ? "+" : "-"}$
-                  {fmtPrice(Math.abs(p.unrealized_pl))}
-                  <div className="text-[10px]">{fmtPct(p.unrealized_plpc)}</div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
-function RecentOrdersCard({ rows }: { rows: AlpacaOrder[] | null }) {
-  return (
-    <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
-      <h3 className="mb-3 text-xs uppercase tracking-wide text-(--color-text-dim)">
-        Recent orders
-      </h3>
-      {!rows ? (
-        <Skeleton className="h-32 w-full" />
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-(--color-text-dim)">No recent orders.</p>
-      ) : (
-        <ul className="max-h-64 space-y-2 overflow-auto">
-          {rows.map((o) => (
-            <li key={o.id} className="flex items-center justify-between text-xs">
-              <div>
-                <span className="font-medium">{o.symbol}</span>{" "}
-                <span className="uppercase text-(--color-text-dim)">{o.side}</span>{" "}
-                <span className="tabular-nums">{o.qty}</span>{" "}
-                <span className="text-(--color-text-dim)">{o.type}</span>
-              </div>
-              <span
-                className={`rounded px-1.5 py-0.5 ${STATUS_COLOR[o.status] ?? "bg-(--color-panel-2)"}`}
-              >
-                {o.status}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
 
 function ManualPositionsCard({
   rows,
@@ -230,6 +62,8 @@ function ManualPositionsCard({
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [importErr, setImportErr] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [busy, setBusy] = useState(false);
+
   const [symbol, setSymbol] = useState("");
   const [type, setType] = useState<"stock" | "call" | "put">("stock");
   const [entry, setEntry] = useState("");
@@ -237,7 +71,6 @@ function ManualPositionsCard({
   const [strike, setStrike] = useState("");
   const [exp, setExp] = useState("");
   const [notes, setNotes] = useState("");
-  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const submit = async (e: FormEvent) => {
@@ -289,7 +122,7 @@ function ManualPositionsCard({
   const onFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     const mode = (e.target.dataset.mode as "replace" | "append") ?? "replace";
-    e.target.value = ""; // reset so picking the same file twice still fires
+    e.target.value = "";
     if (!file) return;
     setImporting(true);
     setImportErr(null);
@@ -313,9 +146,11 @@ function ManualPositionsCard({
         mode: string;
       };
       const skipNote = data.skipped.length
-        ? ` · skipped ${data.skipped.length} (${data.skipped.slice(0, 2).map((s) => s.reason).join("; ")}${data.skipped.length > 2 ? "…" : ""})`
+        ? ` · skipped ${data.skipped.length}`
         : "";
-      setImportStatus(`Imported ${data.imported} position${data.imported === 1 ? "" : "s"} (${data.mode})${skipNote}`);
+      setImportStatus(
+        `Imported ${data.imported} (${data.mode})${skipNote}`,
+      );
       onChange();
     } catch (e) {
       setImportErr((e as Error).message);
@@ -326,41 +161,36 @@ function ManualPositionsCard({
 
   return (
     <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h3 className="text-xs uppercase tracking-wide text-(--color-text-dim)">
-          Manual positions
-        </h3>
-        <div className="flex items-center gap-1">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,text/csv"
-            onChange={onFileSelected}
-            className="hidden"
-          />
-          <button
-            onClick={() => onPickFile("replace")}
-            disabled={importing}
-            title="Wipe table and import from CSV — broker snapshot semantics"
-            className="flex items-center gap-1 rounded-md border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-panel-2) disabled:opacity-50"
-          >
-            <Upload size={12} /> Import CSV
-          </button>
-          <button
-            onClick={() => onPickFile("append")}
-            disabled={importing}
-            title="Add CSV rows to existing positions"
-            className="rounded-md border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-panel-2) disabled:opacity-50"
-          >
-            +CSV
-          </button>
-          <button
-            onClick={() => setOpen((o) => !o)}
-            className="rounded-md border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-panel-2)"
-          >
-            {open ? "Cancel" : "+ Add"}
-          </button>
-        </div>
+      <div className="mb-3 flex items-center justify-end gap-1">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv,text/csv"
+          onChange={onFileSelected}
+          className="hidden"
+        />
+        <button
+          onClick={() => onPickFile("replace")}
+          disabled={importing}
+          title="Wipe table and import from CSV"
+          className="flex items-center gap-1 rounded-md border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-panel-2) disabled:opacity-50"
+        >
+          <Upload size={12} /> Import CSV
+        </button>
+        <button
+          onClick={() => onPickFile("append")}
+          disabled={importing}
+          title="Add CSV rows to existing"
+          className="rounded-md border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-panel-2) disabled:opacity-50"
+        >
+          +CSV
+        </button>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="rounded-md border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-panel-2)"
+        >
+          {open ? "Cancel" : "+ Add"}
+        </button>
       </div>
 
       {importStatus && (
@@ -449,7 +279,8 @@ function ManualPositionsCard({
         <Skeleton className="h-16 w-full" />
       ) : rows.length === 0 ? (
         <p className="text-sm text-(--color-text-dim)">
-          No manual positions tracked.
+          No manual positions tracked. Use Import CSV or "+ Add" to add holdings
+          for accounts SnapTrade can't reach (401k, crypto, ESPP, private investments).
         </p>
       ) : (
         <table className="w-full text-sm">
@@ -484,9 +315,7 @@ function ManualPositionsCard({
                 <td className="py-1 text-right tabular-nums">
                   {m.last_price != null ? `$${fmtPrice(m.last_price)}` : "—"}
                 </td>
-                <td
-                  className={`py-1 text-right tabular-nums ${changeClass(m.pl)}`}
-                >
+                <td className={`py-1 text-right tabular-nums ${changeClass(m.pl)}`}>
                   {m.pl != null
                     ? `${m.pl >= 0 ? "+" : "-"}$${fmtPrice(Math.abs(m.pl))}`
                     : "—"}

@@ -119,3 +119,16 @@ export function clearCacheKey(key: string) {
   cache.delete(key);
   notify(key);
 }
+
+/** Update a cached entry in place — useful for optimistic updates that
+ * shouldn't trigger a refetch + skeleton flash. */
+export function mutateCache<T>(
+  key: string,
+  updater: (current: T | null) => T | null,
+): void {
+  const entry = cache.get(key) as Entry<T> | undefined;
+  const next = updater(entry?.data ?? null);
+  if (next == null) return;
+  cache.set(key, { data: next, fetchedAt: Date.now() });
+  notify(key);
+}
