@@ -4,7 +4,7 @@ import { api } from "./api/client";
 import type { AuthStatus, WatchlistTicker } from "./api/types";
 import { CommandPalette } from "./components/CommandPalette";
 import { Header } from "./components/Header";
-import { Login } from "./components/Login";
+import { LoginModal } from "./components/Login";
 import { Skeleton } from "./components/Skeleton";
 import { MobileTabBar, Tabs, type TabDef } from "./components/Tabs";
 
@@ -21,8 +21,8 @@ const TABS: TabDef[] = [
 ];
 
 export function App() {
-  const [authed, setAuthed] = useState<boolean | null>(null);
-  const [role, setRole] = useState<"owner" | "guest" | null>(null);
+  const [role, setRole] = useState<"owner" | "guest">("guest");
+  const [authReady, setAuthReady] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [active, setActive] = useState<string>(() =>
     typeof window !== "undefined"
@@ -30,17 +30,18 @@ export function App() {
       : "morning",
   );
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
   const [requestedSymbol, setRequestedSymbol] = useState<string | null>(null);
   const [watchlistSymbols, setWatchlistSymbols] = useState<string[]>([]);
 
   const refreshAuth = useCallback(async () => {
     try {
       const s = await api.get<AuthStatus>("/auth/status");
-      setAuthed(s.authed);
       setRole(s.role);
     } catch {
-      setAuthed(false);
-      setRole(null);
+      setRole("guest");
+    } finally {
+      setAuthReady(true);
     }
   }, []);
 
@@ -55,18 +56,16 @@ export function App() {
     }
   }, [active]);
 
-  // Pull watchlist symbols once authed so the command palette has suggestions.
+  // Pull watchlist symbols so cmd+K palette has suggestions (works for guests too).
   useEffect(() => {
-    if (!authed) return;
     api
       .get<WatchlistTicker[]>("/watchlist")
       .then((rows) => setWatchlistSymbols(rows.map((r) => r.symbol)))
       .catch(() => {});
-  }, [authed]);
+  }, [refreshNonce]);
 
-  // Cmd+K / Ctrl+K opens the command palette; ? shows keyboard hints (future).
+  // Cmd+K / Ctrl+K opens the command palette.
   useEffect(() => {
-    if (!authed) return;
     const onKey = (e: KeyboardEvent) => {
       const isCmdK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k";
       if (isCmdK) {
@@ -76,29 +75,30 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [authed]);
+  }, []);
 
   const onLogout = useCallback(async () => {
     try {
       await api.post("/auth/logout");
     } finally {
-      setAuthed(false);
+      setRole("guest");
     }
   }, []);
+
+  const onLoginClick = useCallback(() => setLoginOpen(true), []);
+
+  const onLoginSuccess = useCallback(() => {
+    setLoginOpen(false);
+    refreshAuth();
+  }, [refreshAuth]);
 
   const onPaletteSelect = (sym: string) => {
     setRequestedSymbol(sym);
     setActive("watchlist");
   };
 
-  if (authed === null) {
-    return (
-      <div className="p-8 text-sm text-(--color-text-dim)">Loading…</div>
-    );
-  }
-
-  if (!authed) {
-    return <Login onLogin={refreshAuth} />;
+  if (!authReady) {
+    return <div className="p-8 text-sm text-(--color-text-dim)">Loading…</div>;
   }
 
   return (
@@ -107,6 +107,7 @@ export function App() {
         refreshNonce={refreshNonce}
         onRefresh={() => setRefreshNonce((n) => n + 1)}
         onLogout={onLogout}
+        onLogin={onLoginClick}
         onSearch={() => setPaletteOpen(true)}
         role={role}
       />
@@ -134,6 +135,12 @@ export function App() {
         onClose={() => setPaletteOpen(false)}
         onSelect={onPaletteSelect}
         watchlistSymbols={watchlistSymbols}
+      />
+
+      <LoginModal
+        open={loginOpen}
+        onClose={() => setLoginOpen(false)}
+        onSuccess={onLoginSuccess}
       />
     </div>
   );

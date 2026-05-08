@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LogOut, RefreshCcw, Search } from "lucide-react";
+import { LogIn, LogOut, RefreshCcw, Search } from "lucide-react";
 import { api } from "../api/client";
 import type { SnapTradeHoldings } from "../api/types";
 import { changeClass, fmtPrice } from "../lib/format";
@@ -8,6 +8,7 @@ type Props = {
   refreshNonce: number;
   onRefresh: () => void;
   onLogout: () => void;
+  onLogin?: () => void;
   onSearch?: () => void;
   role?: "owner" | "guest" | null;
 };
@@ -16,10 +17,11 @@ export function Header({
   refreshNonce,
   onRefresh,
   onLogout,
+  onLogin,
   onSearch,
   role,
 }: Props) {
-  const isGuest = role === "guest";
+  const isGuest = role !== "owner";
   const [equity, setEquity] = useState<number | null>(null);
   const [invested, setInvested] = useState<number | null>(null);
   const [unrealized, setUnrealized] = useState<number | null>(null);
@@ -102,14 +104,27 @@ export function Header({
           >
             <RefreshCcw size={14} />
           </button>
-          <button
-            onClick={onLogout}
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
-            aria-label="Log out"
-            title="Log out"
-          >
-            <LogOut size={14} />
-          </button>
+          {role === "owner" ? (
+            <button
+              onClick={onLogout}
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
+              aria-label="Log out"
+              title="Log out"
+            >
+              <LogOut size={14} />
+            </button>
+          ) : (
+            onLogin && (
+              <button
+                onClick={onLogin}
+                className="flex items-center gap-1.5 rounded-md border border-(--color-accent)/60 bg-(--color-accent)/10 px-3 py-1.5 text-xs font-medium text-(--color-accent) hover:bg-(--color-accent)/20"
+                aria-label="Owner login"
+                title="Owner login"
+              >
+                <LogIn size={14} /> Owner
+              </button>
+            )
+          )}
         </div>
       </div>
     </header>

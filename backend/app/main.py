@@ -66,58 +66,42 @@ class LoginPayload(BaseModel):
     password: str
 
 
-def _session_role(request: Request) -> str | None:
-    """Returns 'owner' | 'guest' | None."""
+def _session_role(request: Request) -> str:
+    """Returns 'owner' | 'guest'. Anyone without a valid owner cookie is a guest."""
     token = request.cookies.get("jnvest_session")
     if not token:
-        return None
+        return "guest"
     try:
         val = serializer.loads(token)
     except BadSignature:
-        return None
-    if val == "ok":
-        return "owner"
-    if val == "guest":
         return "guest"
-    return None
-
-
-def _is_authed(request: Request) -> bool:
-    return _session_role(request) is not None
+    return "owner" if val == "ok" else "guest"
 
 
 def is_guest(request: Request) -> bool:
-    return _session_role(request) == "guest"
+    return _session_role(request) != "owner"
 
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
+    """Open by default — anyone can hit GETs and gets the guest view.
+    Mutations (POST/PUT/DELETE) require owner login."""
     path = request.url.path
-    is_api = path.startswith("/api")
-    is_public = path in PUBLIC_PATHS or path.startswith("/api/auth/")
-    if is_api and not is_public and not _is_authed(request):
-        return JSONResponse({"detail": "unauthorized"}, status_code=401)
-    # Guests get read-only: block any non-GET API.
-    if (
-        is_api
-        and not is_public
-        and is_guest(request)
-        and request.method not in ("GET", "HEAD", "OPTIONS")
-    ):
-        return JSONResponse({"detail": "guest mode is read-only"}, status_code=403)
+    if path.startswith("/api") and request.method not in ("GET", "HEAD", "OPTIONS"):
+        is_public = path in PUBLIC_PATHS or path.startswith("/api/auth/")
+        if not is_public and _session_role(request) != "owner":
+            return JSONResponse(
+                {"detail": "owner login required for write operations"},
+                status_code=401,
+            )
     return await call_next(request)
 
 
 @app.post("/api/auth/login")
 async def login(payload: LoginPayload, response: Response) -> dict:
-    role: str
-    if payload.password == settings.app_password:
-        role = "owner"
-    elif settings.guest_password and payload.password == settings.guest_password:
-        role = "guest"
-    else:
+    if payload.password != settings.app_password:
         raise HTTPException(status_code=401, detail="invalid password")
-    token = serializer.dumps("ok" if role == "owner" else "guest")
+    token = serializer.dumps("ok")
     response.set_cookie(
         "jnvest_session",
         token,
@@ -126,7 +110,7 @@ async def login(payload: LoginPayload, response: Response) -> dict:
         samesite="lax",
         secure=not settings.database_url.startswith("sqlite"),
     )
-    return {"ok": True, "role": role}
+    return {"ok": True, "role": "owner"}
 
 
 @app.post("/api/auth/logout")
@@ -138,12 +122,7 @@ async def logout(response: Response) -> dict:
 @app.get("/api/auth/status")
 async def auth_status(request: Request) -> dict:
     role = _session_role(request)
-    return {
-        "authed": role is not None,
-        "is_paper": settings.is_paper,
-        "role": role,
-        "guest_enabled": bool(settings.guest_password),
-    }
+    return {"authed": role == "owner", "is_paper": settings.is_paper, "role": role}
 
 
 @app.get("/api/health")
@@ -175,10 +154,8 @@ app.include_router(snaptrade.router, prefix="/api")
 
 @app.websocket("/api/ws")
 async def ws_endpoint(websocket: WebSocket) -> None:
-    # Auth via the same session cookie used by REST.
-    if not _is_authed(websocket):  # type: ignore[arg-type]
-        await websocket.close(code=4401)
-        return
+    # Open WS — guests can stream too. The connection is read-only by design
+    # (we don't process inbound client messages).
     await websocket.accept()
     await streamer.register_client(websocket)
     try:
