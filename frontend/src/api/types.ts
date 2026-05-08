@@ -249,6 +249,7 @@ export type SnapTradeAccount = {
   balance: number;
   cash: number;
   equity: number;
+  invested: number;
 };
 
 export type SnapTradeStock = {

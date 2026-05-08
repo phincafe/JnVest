@@ -121,8 +121,10 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
                 continue
             bal_total += float(b.get("buying_power") or 0)
             bal_cash += float(b.get("cash") or 0)
-        tv = float(_safe_get(entry.get("total_value"), "value") or 0)
-        total_value += tv or bal_total
+        # Track per-account invested amount so we can derive equity reliably
+        # (SnapTrade's total_value is often missing or just echoes cash for IRAs).
+        acct_invested = 0.0
+        tv_raw = float(_safe_get(entry.get("total_value"), "value") or 0)
         total_cash += bal_cash
 
         for p in entry.get("positions") or []:
@@ -138,6 +140,7 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
             avg_raw = p.get("average_purchase_price")
             avg = float(avg_raw) if avg_raw else None
             mkt_val = qty * price
+            acct_invested += mkt_val
             cost = (qty * avg) if avg else None
             pl = (mkt_val - cost) if cost is not None else (float(p.get("open_pnl") or 0) or None)
             pl_pct = ((mkt_val - cost) / cost * 100.0) if cost else None
@@ -175,6 +178,7 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
             avg_per_contract = float(avg_raw) if avg_raw else None
             multiplier = 100.0
             mkt_val = qty * price * multiplier
+            acct_invested += mkt_val
             cost = (qty * avg_per_contract) if avg_per_contract else None
             pl = (mkt_val - cost) if cost is not None else None
             pl_pct = ((mkt_val - cost) / cost * 100.0) if cost else None
@@ -242,15 +246,24 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
                 }
             )
 
+        # Per-account equity = cash + invested. Use SnapTrade's total_value
+        # only if it's at least as big as cash + invested (i.e. it's actually
+        # reporting account equity vs. just echoing cash). Otherwise our
+        # computed value is more accurate.
+        computed_equity = bal_cash + acct_invested
+        acct_equity = tv_raw if tv_raw >= computed_equity - 0.01 else computed_equity
+        total_value += acct_equity
+
         out_accounts.append(
             {
                 "id": acct_id,
                 "name": acct_name,
                 "broker": broker,
                 "type": _safe_get(_safe_get(acct, "meta"), "type") or _safe_get(acct, "raw_type"),
-                "balance": tv or bal_total,
+                "balance": acct_equity,
                 "cash": bal_cash,
-                "equity": tv,
+                "equity": acct_equity,
+                "invested": acct_invested,
             }
         )
 
@@ -258,9 +271,7 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
         (op["quantity"] * (op["avg_cost"] or 0) * 100) for op in options if op.get("avg_cost")
     )
     invested = sum(s["market_value"] for s in stocks) + sum(op["market_value"] for op in options)
-    # Equity = total account value (cash + investments). Prefer SnapTrade's
-    # total_value when present; fall back to cash + invested.
-    equity = total_value if total_value else (total_cash + invested)
+    equity = total_value or (total_cash + invested)
 
     return {
         "accounts": out_accounts,
