@@ -64,21 +64,22 @@ export function GuestPortfolioView({ holdings }: { holdings: SnapTradeHoldings }
   }, [holdings.positions, stockPctOfPortfolio]);
 
   const optionSlices = useMemo(() => {
-    const raw = holdings.options
-      .filter((o) => (o.allocation_pct ?? 0) > 0)
-      .map<Slice>((o) => {
-        const sym =
-          o.option_type && o.strike != null && o.expiration
-            ? `${o.underlying} $${o.strike}${o.option_type[0].toUpperCase()} ${o.expiration}`
-            : (o.underlying ?? "—");
-        return {
-          label: sym,
-          pct: optionPctOfPortfolio
-            ? ((o.allocation_pct ?? 0) / optionPctOfPortfolio) * 100
-            : 0,
-          pct_of_portfolio: o.allocation_pct ?? 0,
-        };
-      })
+    // Collapse by underlying ticker so the pie shows one slice per stock,
+    // not one per contract. The detailed per-contract list lives in the
+    // "All options" table below.
+    const groups = new Map<string, number>();
+    for (const o of holdings.options) {
+      const pct = o.allocation_pct ?? 0;
+      if (pct <= 0) continue;
+      const key = o.underlying ?? "—";
+      groups.set(key, (groups.get(key) ?? 0) + pct);
+    }
+    const raw = [...groups.entries()]
+      .map<Slice>(([label, pctOfPort]) => ({
+        label,
+        pct: optionPctOfPortfolio ? (pctOfPort / optionPctOfPortfolio) * 100 : 0,
+        pct_of_portfolio: pctOfPort,
+      }))
       .sort((a, b) => b.pct - a.pct);
     return bucketLongTail(raw);
   }, [holdings.options, optionPctOfPortfolio]);
