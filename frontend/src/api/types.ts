@@ -238,6 +238,79 @@ export type PlaidHoldingsResponse = {
   };
 };
 
+export type SnapTradeAccount = {
+  id: string;
+  name: string;
+  broker: string;
+  type: string | null;
+  balance: number;
+  cash: number;
+};
+
+export type SnapTradeStock = {
+  account_id: string;
+  account: string;
+  broker: string;
+  ticker: string | null;
+  description: string | null;
+  quantity: number;
+  price: number;
+  avg_cost: number | null;
+  market_value: number;
+  unrealized_pl: number | null;
+  unrealized_pl_pct: number | null;
+};
+
+export type SnapTradeOption = {
+  account_id: string;
+  account: string;
+  broker: string;
+  underlying: string | null;
+  ticker: string | null;
+  option_type: string | null;
+  strike: number | null;
+  expiration: string | null;
+  quantity: number;
+  price: number;
+  avg_cost: number | null;
+  market_value: number;
+  unrealized_pl: number | null;
+  unrealized_pl_pct: number | null;
+};
+
+export type SnapTradeOrder = {
+  account: string;
+  broker: string;
+  ticker: string | null;
+  action: string | null;
+  status: string | null;
+  total_quantity: number | null;
+  filled_quantity: number | null;
+  execution_price: number | null;
+  time_executed: string | null;
+};
+
+export type SnapTradeHoldings = {
+  accounts: SnapTradeAccount[];
+  positions: SnapTradeStock[];
+  options: SnapTradeOption[];
+  orders: SnapTradeOrder[];
+  totals: {
+    market_value: number;
+    cash: number;
+    unrealized_pl: number;
+  };
+};
+
+export type SnapTradeAuthorization = {
+  id: string;
+  brokerage?: { name?: string; slug?: string } | null;
+  created_date?: string;
+  updated_date?: string;
+  disabled?: boolean;
+  disabled_date?: string | null;
+};
+
 export type ManualPosition = {
   id: number;
   symbol: string;

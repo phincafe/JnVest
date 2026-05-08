@@ -6,8 +6,8 @@ import { Calendar } from "./components/Calendar";
 import { Login } from "./components/Login";
 import { MarketContext } from "./components/MarketContext";
 import { OrderTicket } from "./components/OrderTicket";
-import { PlaidPanel } from "./components/PlaidPanel";
 import { Positions } from "./components/Positions";
+import { SnapTradePanel } from "./components/SnapTradePanel";
 import { StockDetail } from "./components/StockDetail";
 import { Watchlist } from "./components/Watchlist";
 
@@ -73,8 +73,8 @@ export function App() {
         />
         <StockDetail symbol={selectedSymbol} />
         <Calendar refreshNonce={refreshNonce} />
+        <SnapTradePanel refreshNonce={refreshNonce} />
         <Positions refreshNonce={refreshNonce} />
-        <PlaidPanel refreshNonce={refreshNonce} />
         <OrderTicket
           isPaper={isPaper}
           onSubmitted={() => setRefreshNonce((n) => n + 1)}

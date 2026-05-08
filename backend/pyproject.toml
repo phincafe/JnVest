@@ -20,6 +20,7 @@ dependencies = [
     "python-multipart>=0.0.20",
     "websockets>=13",
     "plaid-python>=29",
+    "snaptrade-python-sdk>=11",
 ]
 
 [project.optional-dependencies]

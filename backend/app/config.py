@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     plaid_secret: str = ""
     plaid_env: str = "sandbox"  # sandbox | production
 
+    # SnapTrade — sign up at https://dashboard.snaptrade.com (free tier: 5 connections)
+    snaptrade_client_id: str = ""
+    snaptrade_consumer_key: str = ""
+
     @property
     def is_paper(self) -> bool:
         return "paper" in self.alpaca_base_url

@@ -46,6 +46,18 @@ class PlaidItem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class SnapTradeUser(Base):
+    """One-row table holding the JnVest SnapTrade end-user identity. Single-user app:
+    we register one SnapTrade user lazily on first call and reuse it forever."""
+
+    __tablename__ = "jnv_snaptrade_user"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    user_secret: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class IVHistory(Base):
     """Stores daily ATM IV snapshots so we can compute IV Rank/Percentile over 1Y."""
 
