@@ -204,12 +204,46 @@ function RecommendationBar({
   rec: NonNullable<StockFundamentals["analyst_recommendation"]>;
 }) {
   const segs = [
-    { label: "Strong Buy", count: rec.strong_buy, color: "bg-emerald-500" },
-    { label: "Buy", count: rec.buy, color: "bg-(--color-up)" },
-    { label: "Hold", count: rec.hold, color: "bg-yellow-500" },
-    { label: "Sell", count: rec.sell, color: "bg-orange-500" },
-    { label: "Strong Sell", count: rec.strong_sell, color: "bg-(--color-down)" },
+    { label: "Strong Buy", short: "S.Buy", count: rec.strong_buy, color: "bg-emerald-500", text: "text-emerald-400" },
+    { label: "Buy", short: "Buy", count: rec.buy, color: "bg-(--color-up)", text: "text-(--color-up)" },
+    { label: "Hold", short: "Hold", count: rec.hold, color: "bg-yellow-500", text: "text-yellow-300" },
+    { label: "Sell", short: "Sell", count: rec.sell, color: "bg-orange-500", text: "text-orange-300" },
+    { label: "Strong Sell", short: "S.Sell", count: rec.strong_sell, color: "bg-(--color-down)", text: "text-(--color-down)" },
   ];
+  // Compute consensus: weighted score on a 1 (Strong Sell) → 5 (Strong Buy) scale.
+  const score =
+    rec.total > 0
+      ? (5 * rec.strong_buy +
+          4 * rec.buy +
+          3 * rec.hold +
+          2 * rec.sell +
+          1 * rec.strong_sell) /
+        rec.total
+      : null;
+  const consensus =
+    score == null
+      ? "—"
+      : score >= 4.5
+        ? "Strong Buy"
+        : score >= 3.5
+          ? "Buy"
+          : score >= 2.5
+            ? "Hold"
+            : score >= 1.5
+              ? "Sell"
+              : "Strong Sell";
+  const consensusColor =
+    score == null
+      ? "text-(--color-text-dim)"
+      : score >= 4.5
+        ? "text-emerald-400"
+        : score >= 3.5
+          ? "text-(--color-up)"
+          : score >= 2.5
+            ? "text-yellow-300"
+            : score >= 1.5
+              ? "text-orange-300"
+              : "text-(--color-down)";
   return (
     <div className="mt-3">
       <div className="mb-1 flex items-baseline justify-between text-[11px]">
@@ -221,22 +255,43 @@ function RecommendationBar({
           {rec.period ? ` · ${rec.period}` : ""}
         </span>
       </div>
-      <div className="flex h-2 overflow-hidden rounded-full bg-(--color-panel-2)">
+
+      {/* Bar with hover tooltips per segment */}
+      <div className="flex h-2.5 overflow-hidden rounded-full bg-(--color-panel-2)">
         {segs.map((s) =>
           s.count > 0 ? (
             <div
               key={s.label}
               className={s.color}
               style={{ width: `${(s.count / rec.total) * 100}%` }}
-              title={`${s.label}: ${s.count}`}
+              title={`${s.label}: ${s.count} of ${rec.total}`}
             />
           ) : null,
         )}
       </div>
-      <div className="mt-1 flex justify-between text-[10px] text-(--color-text-dim) tabular-nums">
+
+      {/* Legend with color dot, label, and count — Bloomberg/Yahoo Finance style */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-(--color-text-dim)">
         {segs.map((s) => (
-          <span key={s.label}>{s.count}</span>
+          <span key={s.label} className="inline-flex items-center gap-1">
+            <span className={`h-1.5 w-1.5 rounded-full ${s.color}`} />
+            <span>{s.short}</span>
+            <span className="font-medium tabular-nums text-(--color-text)">{s.count}</span>
+          </span>
         ))}
+      </div>
+
+      {/* Plain-English consensus + scale explanation */}
+      <div className="mt-2 flex items-baseline justify-between gap-2 rounded-md bg-(--color-panel-2) px-2 py-1.5 text-[11px]">
+        <div>
+          <span className="text-(--color-text-dim)">Consensus: </span>
+          <span className={`font-semibold ${consensusColor}`}>{consensus}</span>
+          {score != null && (
+            <span className="ml-1 text-(--color-text-dim) tabular-nums">
+              ({score.toFixed(2)} / 5.00)
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
