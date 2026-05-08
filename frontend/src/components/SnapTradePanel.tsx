@@ -284,26 +284,19 @@ function AccountChips({
   const totalInvested =
     positions.reduce((s, p) => s + p.market_value, 0) +
     options.reduce((s, o) => s + o.market_value, 0);
+  const totalOpenPl = accounts.reduce((s, a) => s + (a.open_pl || 0), 0);
+  const totalOpenCost = Math.max(totalInvested - totalOpenPl, 0);
+  const totalOpenPlPct = totalOpenCost ? (totalOpenPl / totalOpenCost) * 100 : null;
+  const totalTodayPl = accounts.reduce((s, a) => s + (a.today_pl || 0), 0);
+  const totalTodayBase = Math.max(totalEq - totalTodayPl, 0);
+  const totalTodayPlPct = totalTodayBase ? (totalTodayPl / totalTodayBase) * 100 : null;
+  const allTodayComplete = accounts.every((a) => a.today_pl_complete);
   const [sort, setSort] = useState<"equity" | "name" | "broker">("equity");
 
-  const enriched = accounts.map((a) => {
-    const acctPos = positions.filter((p) => p.account_id === a.id);
-    const acctOpts = options.filter((o) => o.account_id === a.id);
-    const cost =
-      acctPos.reduce((s, p) => s + (p.avg_cost ? p.quantity * p.avg_cost : 0), 0) +
-      acctOpts.reduce((s, o) => s + (o.avg_cost ? o.quantity * o.avg_cost * 100 : 0), 0);
-    const value =
-      acctPos.reduce((s, p) => s + p.market_value, 0) +
-      acctOpts.reduce((s, o) => s + o.market_value, 0);
-    const pl = cost ? value - cost : null;
-    const plPct = cost ? ((value - cost) / cost) * 100 : null;
-    return { account: a, pl, plPct, invested: value, cash: a.cash || 0 };
-  });
-
-  const sorted = [...enriched].sort((a, b) => {
-    if (sort === "equity") return (b.account.balance || 0) - (a.account.balance || 0);
-    if (sort === "name") return a.account.name.localeCompare(b.account.name);
-    return (a.account.broker || "").localeCompare(b.account.broker || "");
+  const sorted = [...accounts].sort((a, b) => {
+    if (sort === "equity") return (b.balance || 0) - (a.balance || 0);
+    if (sort === "name") return a.name.localeCompare(b.name);
+    return (a.broker || "").localeCompare(b.broker || "");
   });
 
   return (
@@ -329,10 +322,15 @@ function AccountChips({
           title="All accounts"
           subtitle={`${accounts.length} brokerage${accounts.length === 1 ? "" : "s"}`}
           amount={`$${fmtPrice(totalEq)}`}
+          todayPl={totalTodayPl}
+          todayPlPct={totalTodayPlPct}
+          todayComplete={allTodayComplete}
+          openPl={totalOpenPl}
+          openPlPct={totalOpenPlPct}
           invested={totalInvested}
           cash={totalCash}
         />
-        {sorted.map(({ account: a, pl, plPct, invested, cash }) => (
+        {sorted.map((a) => (
           <Chip
             key={a.id}
             active={selected === a.id}
@@ -340,10 +338,13 @@ function AccountChips({
             title={a.name}
             subtitle={a.broker + (a.type ? ` · ${a.type}` : "")}
             amount={`$${fmtPrice(a.balance || 0)}`}
-            pl={pl}
-            plPct={plPct}
-            invested={invested}
-            cash={cash}
+            todayPl={a.today_pl}
+            todayPlPct={a.today_pl_pct}
+            todayComplete={a.today_pl_complete}
+            openPl={a.open_pl}
+            openPlPct={a.open_pl_pct}
+            invested={a.invested}
+            cash={a.cash || 0}
           />
         ))}
       </div>
@@ -357,8 +358,11 @@ function Chip({
   title,
   subtitle,
   amount,
-  pl,
-  plPct,
+  todayPl,
+  todayPlPct,
+  todayComplete,
+  openPl,
+  openPlPct,
   invested,
   cash,
 }: {
@@ -367,8 +371,12 @@ function Chip({
   title: string;
   subtitle: string;
   amount: string;
-  pl?: number | null;
-  plPct?: number | null;
+  todayPl?: number | null;
+  todayPlPct?: number | null;
+  /** False when account holds options — today_pl is stocks-only, mark with *. */
+  todayComplete?: boolean;
+  openPl?: number | null;
+  openPlPct?: number | null;
   invested?: number;
   cash?: number;
 }) {
@@ -385,15 +393,33 @@ function Chip({
       <div className="text-[10px] uppercase tracking-wide text-(--color-text-dim)">
         {subtitle}
       </div>
-      <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 tabular-nums">
-        <span className="text-base font-semibold">{amount}</span>
-        {pl != null && (
-          <span className={`whitespace-nowrap text-[11px] ${changeClass(pl)}`}>
-            {pl >= 0 ? "+" : "-"}${fmtPrice(Math.abs(pl))}
-            {plPct != null && ` (${fmtPct(plPct)})`}
-          </span>
-        )}
-      </div>
+      <div className="mt-1 text-base font-semibold tabular-nums">{amount}</div>
+      {(todayPl != null || openPl != null) && (
+        <div className="mt-0.5 grid grid-cols-2 gap-2 text-[11px] tabular-nums">
+          {todayPl != null && (
+            <div title={todayComplete === false ? "Stocks only — no option prev-close data" : undefined}>
+              <div className="text-[9px] uppercase tracking-wide text-(--color-text-dim)">
+                Today{todayComplete === false ? " *" : ""}
+              </div>
+              <div className={`font-medium ${changeClass(todayPl)}`}>
+                {todayPl >= 0 ? "+" : "-"}${fmtPrice(Math.abs(todayPl))}
+                {todayPlPct != null && ` (${fmtPct(todayPlPct)})`}
+              </div>
+            </div>
+          )}
+          {openPl != null && (
+            <div>
+              <div className="text-[9px] uppercase tracking-wide text-(--color-text-dim)">
+                Open P/L
+              </div>
+              <div className={`font-medium ${changeClass(openPl)}`}>
+                {openPl >= 0 ? "+" : "-"}${fmtPrice(Math.abs(openPl))}
+                {openPlPct != null && ` (${fmtPct(openPlPct)})`}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       {(invested != null || cash != null) && (
         <div className="mt-1 grid grid-cols-2 gap-2 border-t border-(--color-border)/60 pt-2 text-[11px] tabular-nums">
           <div>

@@ -252,6 +252,16 @@ export type SnapTradeAccount = {
   cash: number;
   equity: number;
   invested: number;
+  /** All-time unrealized P/L (current value − cost basis), summed over stocks + options. */
+  open_pl: number;
+  /** open_pl as % of cost basis. */
+  open_pl_pct: number | null;
+  /** Today's change for STOCKS only (last_price − prev_close) × qty. */
+  today_pl: number;
+  /** today_pl as % of (equity − today_pl). */
+  today_pl_pct: number | null;
+  /** False when the account holds options (no option prev-close → today_pl is incomplete). */
+  today_pl_complete: boolean;
 };
 
 export type SnapTradeStock = {
@@ -319,6 +329,9 @@ export type SnapTradeHoldings = {
     cost_basis: number;
     unrealized_pl: number;
     market_value: number; // legacy alias = equity
+    today_pl?: number;
+    today_pl_pct?: number | null;
+    today_pl_complete?: boolean;
     /** Guest-only: cash as % of (cash + invested). */
     cash_pct?: number | null;
     /** Guest-only: invested as % of (cash + invested). */

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import BrokerageAccountAlias, WatchlistTicker
-from ..services import snaptrade_svc, streamer
+from ..services import alpaca, snaptrade_svc, streamer
 
 router = APIRouter(prefix="/snaptrade", tags=["snaptrade"])
 
@@ -95,8 +95,18 @@ def _action_is_option(action: str | None) -> bool:
     return any(k in a for k in ("OPEN", "CLOSE")) and "_" in a
 
 
-def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
-    """Map SnapTrade's per-account holdings into a UI-friendly shape."""
+def _flatten(
+    holdings: list[dict[str, Any]],
+    prev_closes: dict[str, float] | None = None,
+) -> dict[str, Any]:
+    """Map SnapTrade's per-account holdings into a UI-friendly shape.
+
+    `prev_closes` (ticker → yesterday's close) is used to compute per-account
+    today's-change for stock positions. Options aren't included since we don't
+    have option prev-close data; per-account `today_pl_complete` flags whether
+    the account is options-free.
+    """
+    prev_closes = prev_closes or {}
     out_accounts: list[dict[str, Any]] = []
     stocks: list[dict[str, Any]] = []
     options: list[dict[str, Any]] = []
@@ -104,6 +114,8 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
     total_value = 0.0
     total_cash = 0.0
     total_pl = 0.0
+    total_today_pl = 0.0
+    total_today_complete = True
 
     for entry in holdings:
         acct = entry.get("account") or {}
@@ -124,6 +136,11 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
         # Track per-account invested amount so we can derive equity reliably
         # (SnapTrade's total_value is often missing or just echoes cash for IRAs).
         acct_invested = 0.0
+        acct_open_pl = 0.0
+        acct_today_pl = 0.0
+        # If the account has any option positions, today_pl is incomplete
+        # because we don't have option prev-close data.
+        acct_today_complete = True
         tv_raw = float(_safe_get(entry.get("total_value"), "value") or 0)
         total_cash += bal_cash
 
@@ -146,6 +163,12 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
             pl_pct = ((mkt_val - cost) / cost * 100.0) if cost else None
             if pl is not None:
                 total_pl += pl
+                acct_open_pl += pl
+            # Today's change = (last_price - prev_close) * qty. Skip cleanly
+            # if we don't have a prev_close for this ticker.
+            pc = prev_closes.get((ticker or "").upper()) if ticker else None
+            if pc and price and qty:
+                acct_today_pl += (price - pc) * qty
             stocks.append(
                 {
                     "account_id": acct_id,
@@ -184,6 +207,10 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
             pl_pct = ((mkt_val - cost) / cost * 100.0) if cost else None
             if pl is not None:
                 total_pl += pl
+                acct_open_pl += pl
+            # We don't fetch option prev-close, so any account holding options
+            # gets an incomplete today_pl flag.
+            acct_today_complete = False
             # Show the per-share avg in the UI (divide the per-contract figure)
             # so columns are visually comparable to `price`.
             avg_per_share = (avg_per_contract / multiplier) if avg_per_contract else None
@@ -258,6 +285,16 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
         acct_equity = tv_raw if tv_raw >= computed_equity - 0.01 else computed_equity
         total_value += acct_equity
 
+        # today_pl% is relative to start-of-day equity (= today's equity − today_pl)
+        prev_equity = acct_equity - acct_today_pl
+        today_pct = (acct_today_pl / prev_equity * 100.0) if prev_equity else None
+        prev_invested = max(acct_invested - acct_open_pl, 0.0)
+        open_pct = (acct_open_pl / prev_invested * 100.0) if prev_invested else None
+
+        total_today_pl += acct_today_pl
+        if not acct_today_complete:
+            total_today_complete = False
+
         out_accounts.append(
             {
                 "id": acct_id,
@@ -268,6 +305,11 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
                 "cash": bal_cash,
                 "equity": acct_equity,
                 "invested": acct_invested,
+                "open_pl": acct_open_pl,
+                "open_pl_pct": open_pct,
+                "today_pl": acct_today_pl,
+                "today_pl_pct": today_pct,
+                "today_pl_complete": acct_today_complete,
             }
         )
 
@@ -276,6 +318,9 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
     )
     invested = sum(s["market_value"] for s in stocks) + sum(op["market_value"] for op in options)
     equity = total_value or (total_cash + invested)
+
+    prev_total_equity = max(equity - total_today_pl, 0.0)
+    today_pct_total = (total_today_pl / prev_total_equity * 100.0) if prev_total_equity else None
 
     return {
         "accounts": out_accounts,
@@ -288,6 +333,9 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
             "cash": total_cash,
             "cost_basis": cost_basis,
             "unrealized_pl": total_pl,
+            "today_pl": total_today_pl,
+            "today_pl_pct": today_pct_total,
+            "today_pl_complete": total_today_complete,
             # Legacy alias kept for any callers; will remove once UI migrates.
             "market_value": equity,
         },
@@ -389,6 +437,38 @@ def _consolidate_for_guest(flat: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def _prev_closes_for_holdings(holdings: list[dict[str, Any]]) -> dict[str, float]:
+    """Fetch yesterday's close for every stock ticker held across all accounts.
+    Used to compute per-account today's-change. Failures (no creds, API error)
+    are swallowed and return an empty dict — today_pl just shows as $0."""
+    tickers: set[str] = set()
+    for entry in holdings:
+        for p in entry.get("positions") or []:
+            if not isinstance(p, dict):
+                continue
+            sym = p.get("symbol") or {}
+            t = _ticker_of(sym)
+            if t:
+                tickers.add(t.upper())
+    if not tickers:
+        return {}
+    try:
+        bars = await alpaca.daily_bars(sorted(tickers), days=5)
+    except Exception:
+        return {}
+    out: dict[str, float] = {}
+    for t, sym_bars in bars.items():
+        if not sym_bars:
+            continue
+        # Same convention as movers: -2 (yesterday) when we have 2+ bars,
+        # else fall back to the only bar.
+        b = sym_bars[-2] if len(sym_bars) >= 2 else sym_bars[-1]
+        c = b.get("c")
+        if c:
+            out[t.upper()] = float(c)
+    return out
+
+
 @router.get("/holdings")
 async def get_holdings(request: Request, db: Session = Depends(get_db)) -> dict[str, Any]:
     try:
@@ -398,7 +478,8 @@ async def get_holdings(request: Request, db: Session = Depends(get_db)) -> dict[
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"SnapTrade error: {e}") from e
-    flat = _flatten(raw)
+    prev_closes = await _prev_closes_for_holdings(raw)
+    flat = _flatten(raw, prev_closes=prev_closes)
     # Apply user-chosen account nicknames.
     aliases = {a.account_id: a.nickname for a in db.query(BrokerageAccountAlias).all()}
     for acct in flat["accounts"]:
@@ -525,3 +606,121 @@ async def sync_to_watchlist(db: Session = Depends(get_db)) -> dict[str, Any]:
         "skipped_existing": skipped,
         "tickers": new_syms,
     }
+
+
+@router.get("/debug")
+async def debug(request: Request, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Owner-only diagnostic dump: per-account totals reported by SnapTrade vs.
+    our computed values, plus per-position raw price + computed market value.
+    Use this to track down discrepancies vs. what the broker shows in-app."""
+    from ..main import is_guest
+
+    if is_guest(request):
+        raise HTTPException(status_code=403, detail="Owner only")
+    try:
+        user = snaptrade_svc.get_or_create_user(db)
+        raw = await snaptrade_svc.all_holdings(user)
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"SnapTrade error: {e}") from e
+
+    prev_closes = await _prev_closes_for_holdings(raw)
+    out: list[dict[str, Any]] = []
+    for entry in raw:
+        acct = entry.get("account") or {}
+        # Per-account totals as SnapTrade reports them, plus what we'd compute.
+        balances = entry.get("balances") or []
+        bal_cash = 0.0
+        bal_buying_power = 0.0
+        for b in balances:
+            if not isinstance(b, dict):
+                continue
+            cur = _safe_get(b.get("currency"), "code")
+            if cur and cur != "USD":
+                continue
+            bal_cash += float(b.get("cash") or 0)
+            bal_buying_power += float(b.get("buying_power") or 0)
+
+        positions_dump: list[dict[str, Any]] = []
+        invested = 0.0
+        for p in entry.get("positions") or []:
+            if not isinstance(p, dict):
+                continue
+            sym = p.get("symbol") or {}
+            ticker = _ticker_of(sym)
+            qty = float(p.get("units") or 0)
+            price = float(p.get("price") or 0)
+            avg = p.get("average_purchase_price")
+            mkt_val = qty * price
+            invested += mkt_val
+            pc = prev_closes.get((ticker or "").upper()) if ticker else None
+            today_change = ((price - pc) * qty) if (pc and price and qty) else None
+            positions_dump.append(
+                {
+                    "ticker": ticker,
+                    "qty": qty,
+                    "snaptrade_price": price,
+                    "snaptrade_avg_purchase_price": float(avg) if avg else None,
+                    "computed_market_value": mkt_val,
+                    "alpaca_prev_close": pc,
+                    "today_change": today_change,
+                }
+            )
+
+        options_dump: list[dict[str, Any]] = []
+        for op in entry.get("option_positions") or []:
+            if not isinstance(op, dict):
+                continue
+            sym = op.get("symbol") or {}
+            opt_sym = _safe_get(sym, "option_symbol") or {}
+            qty = float(op.get("units") or 0)
+            price = float(op.get("price") or 0)
+            avg = op.get("average_purchase_price")
+            # Show the position dict's raw keys so we can spot any prev_close
+            # field we're not using yet. Cap at the keys themselves to keep
+            # payload small.
+            mkt_val = qty * price * 100.0
+            invested += mkt_val
+            options_dump.append(
+                {
+                    "underlying": _ticker_of(_safe_get(opt_sym, "underlying_symbol")),
+                    "ticker": _safe_get(opt_sym, "ticker"),
+                    "option_type": _safe_get(opt_sym, "option_type"),
+                    "strike": _safe_get(opt_sym, "strike_price"),
+                    "expiration": _safe_get(opt_sym, "expiration_date"),
+                    "qty": qty,
+                    "snaptrade_price_per_share": price,
+                    "snaptrade_avg_per_contract": float(avg) if avg else None,
+                    "computed_market_value": mkt_val,
+                    "raw_keys": sorted(op.keys()),
+                }
+            )
+
+        snaptrade_total_value = float(_safe_get(entry.get("total_value"), "value") or 0)
+        computed_equity = bal_cash + invested
+        out.append(
+            {
+                "account": {
+                    "id": _safe_get(acct, "id"),
+                    "name": _safe_get(acct, "name") or _safe_get(acct, "number"),
+                    "broker": _safe_get(acct, "institution_name"),
+                },
+                "snaptrade_reported": {
+                    "total_value": snaptrade_total_value,
+                    "cash": bal_cash,
+                    "buying_power": bal_buying_power,
+                },
+                "computed": {
+                    "invested": invested,
+                    "equity": computed_equity,
+                    "diff_vs_snaptrade_total": (
+                        computed_equity - snaptrade_total_value if snaptrade_total_value else None
+                    ),
+                },
+                "positions": positions_dump,
+                "options": options_dump,
+                "balances_raw": balances,
+            }
+        )
+    return {"accounts": out}
