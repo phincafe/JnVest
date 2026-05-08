@@ -13,6 +13,7 @@ type Props = {
 
 export function Header({ isPaper, refreshNonce, onRefresh, onLogout }: Props) {
   const [equity, setEquity] = useState<number | null>(null);
+  const [invested, setInvested] = useState<number | null>(null);
   const [unrealized, setUnrealized] = useState<number | null>(null);
   const [cash, setCash] = useState<number | null>(null);
 
@@ -25,6 +26,7 @@ export function Header({ isPaper, refreshNonce, onRefresh, onLogout }: Props) {
       .then((snap) => {
         if (cancelled) return;
         setEquity(snap?.totals.equity ?? null);
+        setInvested(snap?.totals.invested ?? null);
         setUnrealized(snap?.totals.unrealized_pl ?? null);
         setCash(snap?.totals.cash ?? null);
       })
@@ -53,6 +55,7 @@ export function Header({ isPaper, refreshNonce, onRefresh, onLogout }: Props) {
 
         <div className="flex items-center gap-5 text-xs sm:text-sm tabular-nums">
           <Stat label="Equity" value={equity != null ? `$${fmtPrice(equity)}` : "—"} />
+          <Stat label="Invested" value={invested != null ? `$${fmtPrice(invested)}` : "—"} />
           <Stat label="Cash" value={cash != null ? `$${fmtPrice(cash)}` : "—"} />
           <Stat
             label="Unrealized"

@@ -154,7 +154,10 @@ function EarningsCard({ data }: { data: CalendarResponse | null }) {
       ) : data.earnings_warning ? (
         <p className="text-sm text-(--color-text-dim)">{data.earnings_warning}</p>
       ) : data.earnings.length === 0 ? (
-        <p className="text-sm text-(--color-text-dim)">No watchlist earnings this week.</p>
+        <p className="text-sm text-(--color-text-dim)">
+          No watchlist tickers report earnings in the next 7 days. (Add more tickers
+          to the watchlist to expand coverage.)
+        </p>
       ) : (
         <ul className="space-y-2">
           {data.earnings.map((e, i) => (

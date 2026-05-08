@@ -135,6 +135,45 @@ async def earnings_for_symbol(symbol: str) -> dict[str, Any] | None:
     return await cache.aget_or_set(f"finnhub-er:{symbol}", fetch, ttl_seconds=3600)
 
 
+async def market_news(category: str = "general", limit: int = 30) -> list[dict[str, Any]]:
+    """General market news (or 'forex'/'crypto'/'merger'). Free tier."""
+
+    async def fetch() -> list[dict[str, Any]]:
+        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            r = await client.get(
+                f"{BASE}/news",
+                params={"category": category, "token": _key()},
+            )
+            r.raise_for_status()
+            return (r.json() or [])[:limit]
+
+    return await cache.aget_or_set(f"finnhub-news-{category}", fetch, ttl_seconds=300)
+
+
+async def insider_transactions(symbol: str, limit: int = 25) -> list[dict[str, Any]]:
+    """Recent Form 4 insider trades for a symbol. Free tier."""
+
+    async def fetch() -> list[dict[str, Any]]:
+        # Look back 90 days; that's typically enough activity to see a pattern.
+        to = datetime.utcnow().date()
+        frm = to - timedelta(days=90)
+        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            r = await client.get(
+                f"{BASE}/stock/insider-transactions",
+                params={
+                    "symbol": symbol,
+                    "from": frm.isoformat(),
+                    "to": to.isoformat(),
+                    "token": _key(),
+                },
+            )
+            r.raise_for_status()
+            data = (r.json() or {}).get("data") or []
+            return data[:limit]
+
+    return await cache.aget_or_set(f"finnhub-insider:{symbol}", fetch, ttl_seconds=3600)
+
+
 async def economic_calendar(days_ahead: int = 1) -> list[dict[str, Any]]:
     """Economic releases (CPI, jobs, FOMC, etc.). US-only filter applied downstream."""
 

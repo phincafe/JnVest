@@ -1,10 +1,11 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import WatchlistTicker
+from ..models import BrokerageAccountAlias, WatchlistTicker
 from ..services import snaptrade_svc, streamer
 
 router = APIRouter(prefix="/snaptrade", tags=["snaptrade"])
@@ -256,6 +257,10 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
     cost_basis = sum((s["quantity"] * s["avg_cost"]) for s in stocks if s.get("avg_cost")) + sum(
         (op["quantity"] * (op["avg_cost"] or 0) * 100) for op in options if op.get("avg_cost")
     )
+    invested = sum(s["market_value"] for s in stocks) + sum(op["market_value"] for op in options)
+    # Equity = total account value (cash + investments). Prefer SnapTrade's
+    # total_value when present; fall back to cash + invested.
+    equity = total_value if total_value else (total_cash + invested)
 
     return {
         "accounts": out_accounts,
@@ -263,11 +268,13 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
         "options": options,
         "orders": orders[:25],
         "totals": {
-            "market_value": total_value,
+            "equity": equity,
+            "invested": invested,
             "cash": total_cash,
-            "unrealized_pl": total_pl,
             "cost_basis": cost_basis,
-            "equity": total_value,  # alias for clarity in UI
+            "unrealized_pl": total_pl,
+            # Legacy alias kept for any callers; will remove once UI migrates.
+            "market_value": equity,
         },
     }
 
@@ -281,7 +288,50 @@ def get_holdings(db: Session = Depends(get_db)) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"SnapTrade error: {e}") from e
-    return _flatten(raw)
+    flat = _flatten(raw)
+    # Apply user-chosen account nicknames.
+    aliases = {a.account_id: a.nickname for a in db.query(BrokerageAccountAlias).all()}
+    for acct in flat["accounts"]:
+        if acct["id"] in aliases:
+            acct["original_name"] = acct["name"]
+            acct["name"] = aliases[acct["id"]]
+    for collection in (flat["positions"], flat["options"], flat["orders"]):
+        for row in collection:
+            aid = row.get("account_id")
+            if aid and aid in aliases:
+                row["account"] = aliases[aid]
+    return flat
+
+
+class NicknameIn(BaseModel):
+    nickname: str = Field(min_length=1, max_length=128)
+
+
+@router.put("/account/{account_id}/nickname")
+def set_nickname(
+    account_id: str, payload: NicknameIn, db: Session = Depends(get_db)
+) -> dict[str, str]:
+    nickname = payload.nickname.strip()
+    if not nickname:
+        raise HTTPException(status_code=400, detail="nickname cannot be empty")
+    existing = (
+        db.query(BrokerageAccountAlias)
+        .filter(BrokerageAccountAlias.account_id == account_id)
+        .first()
+    )
+    if existing:
+        existing.nickname = nickname
+    else:
+        db.add(BrokerageAccountAlias(account_id=account_id, nickname=nickname))
+    db.commit()
+    return {"account_id": account_id, "nickname": nickname}
+
+
+@router.delete("/account/{account_id}/nickname")
+def clear_nickname(account_id: str, db: Session = Depends(get_db)) -> dict[str, bool]:
+    db.query(BrokerageAccountAlias).filter(BrokerageAccountAlias.account_id == account_id).delete()
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/sync-watchlist")

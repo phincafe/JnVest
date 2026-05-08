@@ -2,7 +2,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from ..services import alpaca
+from ..services import alpaca, finnhub
 
 router = APIRouter(prefix="/market", tags=["market"])
 
@@ -152,6 +152,30 @@ async def movers(limit: int = 5) -> dict[str, Any]:
     gainers = rows[:limit]
     losers = rows[-limit:][::-1]
     return {"gainers": gainers, "losers": losers}
+
+
+@router.get("/news")
+async def market_news(limit: int = 20) -> dict[str, Any]:
+    """General market news headlines from Finnhub."""
+    try:
+        items = await finnhub.market_news("general", limit=limit)
+    except RuntimeError as e:
+        return {"items": [], "warning": str(e)}
+    except Exception as e:
+        return {"items": [], "warning": f"Finnhub error: {e}"}
+    trimmed = [
+        {
+            "headline": it.get("headline"),
+            "source": it.get("source"),
+            "url": it.get("url"),
+            "summary": (it.get("summary") or "")[:240],
+            "ts": it.get("datetime"),
+            "category": it.get("category"),
+            "image": it.get("image"),
+        }
+        for it in items
+    ]
+    return {"items": trimmed}
 
 
 @router.get("/macro")

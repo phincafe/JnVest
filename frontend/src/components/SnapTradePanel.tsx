@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ExternalLink, ListPlus, RefreshCcw, Trash2 } from "lucide-react";
+import { Check, ExternalLink, ListPlus, Pencil, RefreshCcw, Trash2, X } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type {
   SnapTradeAccount,
@@ -428,19 +428,30 @@ function ConnectionList({
 
 function TotalsCard({ totals }: { totals: SnapTradeHoldings["totals"] }) {
   const totalReturnPct =
-    totals.cost_basis > 0
-      ? (totals.unrealized_pl / totals.cost_basis) * 100
-      : null;
+    totals.cost_basis > 0 ? (totals.unrealized_pl / totals.cost_basis) * 100 : null;
   const cards = [
-    { label: "Total equity", value: `$${fmtPrice(totals.equity)}` },
-    { label: "Cash", value: `$${fmtPrice(totals.cash)}` },
-    { label: "Cost basis", value: totals.cost_basis ? `$${fmtPrice(totals.cost_basis)}` : "—" },
+    {
+      label: "Total Equity",
+      value: `$${fmtPrice(totals.equity)}`,
+      sub: "cash + investments",
+    },
+    {
+      label: "Invested",
+      value: `$${fmtPrice(totals.invested)}`,
+      sub: totals.cost_basis ? `cost basis $${fmtPrice(totals.cost_basis)}` : "",
+    },
+    {
+      label: "Cash Available",
+      value: `$${fmtPrice(totals.cash)}`,
+      sub: "",
+    },
     {
       label: "Unrealized P&L",
       value:
         `${totals.unrealized_pl >= 0 ? "+" : "-"}$${fmtPrice(Math.abs(totals.unrealized_pl))}` +
         (totalReturnPct != null ? ` (${fmtPct(totalReturnPct)})` : ""),
       tone: "pl" as const,
+      sub: "",
     },
   ];
   return (
@@ -460,6 +471,11 @@ function TotalsCard({ totals }: { totals: SnapTradeHoldings["totals"] }) {
           >
             {c.value}
           </div>
+          {c.sub && (
+            <div className="mt-0.5 text-[10px] text-(--color-text-dim) tabular-nums">
+              {c.sub}
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -489,15 +505,99 @@ function AccountSection({
   const acctPL = acctCost ? acctValue - acctCost : 0;
   const acctPLPct = acctCost ? (acctPL / acctCost) * 100 : null;
 
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(account.name);
+  const [saving, setSaving] = useState(false);
+
+  const startEdit = () => {
+    setDraft(account.name);
+    setEditing(true);
+  };
+  const cancelEdit = () => setEditing(false);
+  const save = async () => {
+    const name = draft.trim();
+    if (!name || name === account.name) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.put(`/snaptrade/account/${account.id}/nickname`, { nickname: name });
+      clearCacheKey("snaptrade:holdings");
+      setEditing(false);
+    } catch (e) {
+      console.error("rename failed", e);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const reset = async () => {
+    setSaving(true);
+    try {
+      await api.delete(`/snaptrade/account/${account.id}/nickname`);
+      clearCacheKey("snaptrade:holdings");
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="rounded-xl border border-(--color-border) bg-(--color-panel)">
       <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-(--color-border) px-4 py-3">
-        <div>
-          <div className="text-base font-semibold">{account.name}</div>
-          <div className="text-xs text-(--color-text-dim)">
-            {account.broker}
-            {account.type ? ` · ${account.type}` : ""}
-          </div>
+        <div className="flex items-center gap-2">
+          {editing ? (
+            <>
+              <input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") save();
+                  if (e.key === "Escape") cancelEdit();
+                }}
+                autoFocus
+                disabled={saving}
+                className="rounded-md border border-(--color-border) bg-(--color-bg) px-2 py-1 text-base font-semibold focus:border-(--color-accent) focus:outline-none"
+              />
+              <button onClick={save} disabled={saving} className="text-(--color-up)" aria-label="Save">
+                <Check size={16} />
+              </button>
+              <button onClick={cancelEdit} disabled={saving} className="text-(--color-text-dim)" aria-label="Cancel">
+                <X size={16} />
+              </button>
+              {account.original_name && (
+                <button
+                  onClick={reset}
+                  disabled={saving}
+                  className="text-[11px] text-(--color-text-dim) underline hover:text-(--color-text)"
+                  title="Reset to broker default"
+                >
+                  reset
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <div>
+                <div className="text-base font-semibold">{account.name}</div>
+                <div className="text-xs text-(--color-text-dim)">
+                  {account.broker}
+                  {account.type ? ` · ${account.type}` : ""}
+                  {account.original_name && (
+                    <span className="ml-1 italic">(was {account.original_name})</span>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={startEdit}
+                className="text-(--color-text-dim) hover:text-(--color-text)"
+                aria-label="Rename account"
+                title="Rename"
+              >
+                <Pencil size={12} />
+              </button>
+            </>
+          )}
         </div>
         <div className="flex items-baseline gap-4 text-sm tabular-nums">
           <span className="text-(--color-text-dim)">

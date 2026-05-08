@@ -58,6 +58,19 @@ class SnapTradeUser(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class BrokerageAccountAlias(Base):
+    """User-chosen display name for a SnapTrade account_id, so you can rename
+    'Robinhood Roth Ira' → 'My Roth' or 'Wife's IRA'."""
+
+    __tablename__ = "jnv_brokerage_account_aliases"
+    __table_args__ = (UniqueConstraint("account_id", name="uq_jnv_acct_alias"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    nickname: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class IVHistory(Base):
     """Stores daily ATM IV snapshots so we can compute IV Rank/Percentile over 1Y."""
 

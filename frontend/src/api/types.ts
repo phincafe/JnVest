@@ -243,6 +243,7 @@ export type PlaidHoldingsResponse = {
 export type SnapTradeAccount = {
   id: string;
   name: string;
+  original_name?: string;
   broker: string;
   type: string | null;
   balance: number;
@@ -305,11 +306,12 @@ export type SnapTradeHoldings = {
   options: SnapTradeOption[];
   orders: SnapTradeOrder[];
   totals: {
-    market_value: number;
     equity: number;
+    invested: number;
     cash: number;
-    unrealized_pl: number;
     cost_basis: number;
+    unrealized_pl: number;
+    market_value: number; // legacy alias = equity
   };
 };
 
@@ -357,6 +359,43 @@ export type Mover = {
 export type MoversResponse = {
   gainers: Mover[];
   losers: Mover[];
+};
+
+export type MarketNewsItem = {
+  headline: string;
+  source: string;
+  url: string;
+  summary: string;
+  ts: number;
+  category: string | null;
+  image: string | null;
+};
+
+export type MarketNewsResponse = {
+  items: MarketNewsItem[];
+  warning?: string;
+};
+
+export type InsiderTx = {
+  name: string;
+  share: number;
+  change: number;
+  transaction_price: number;
+  transaction_code: string | null;
+  transaction_date: string | null;
+  filing_date: string | null;
+};
+
+export type InsiderResponse = {
+  items: InsiderTx[];
+  summary: {
+    buy_shares: number;
+    sell_shares: number;
+    buy_value: number;
+    sell_value: number;
+    net_shares: number;
+  } | null;
+  warning?: string;
 };
 
 export type StockFundamentals = {

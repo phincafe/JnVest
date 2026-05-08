@@ -8,6 +8,7 @@ import type {
 } from "../api/types";
 import { fmtPrice } from "../lib/format";
 import { CandlestickChart } from "./CandlestickChart";
+import { InsiderPanel } from "./InsiderPanel";
 import { OptionsPanel } from "./OptionsPanel";
 import { Skeleton } from "./Skeleton";
 
@@ -108,6 +109,7 @@ export function StockDetail({ symbol }: Props) {
         <NewsCard news={news} />
       </div>
 
+      <InsiderPanel symbol={symbol} />
       <OptionsPanel symbol={symbol} />
     </section>
   );
@@ -123,6 +125,12 @@ function LegendDot({ color }: { color: string }) {
 }
 
 function FundamentalsCard({ fund }: { fund: StockFundamentals | null }) {
+  const hasAnalystData =
+    !!fund &&
+    (fund.analyst_target_mean != null ||
+      fund.analyst_target_high != null ||
+      fund.analyst_recommendation != null);
+
   return (
     <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
       <h3 className="mb-3 text-sm font-medium text-(--color-text-dim)">Fundamentals</h3>
@@ -133,36 +141,103 @@ function FundamentalsCard({ fund }: { fund: StockFundamentals | null }) {
           <Skeleton className="h-4 w-2/3" />
         </div>
       ) : (
-        <dl className="grid grid-cols-2 gap-y-2 text-sm">
-          <Row label="Next earnings" value={fund.next_earnings ?? "—"} />
-          <Row label="Ex-dividend" value={fund.ex_dividend ?? "—"} />
-          <Row
-            label="Analyst target avg"
-            value={
-              fund.analyst_target_mean
-                ? `$${fmtPrice(fund.analyst_target_mean)}` +
-                  (fund.analyst_count ? ` (${fund.analyst_count})` : "")
-                : "—"
-            }
-          />
-          <Row
-            label="Target range"
-            value={
-              fund.analyst_target_low && fund.analyst_target_high
-                ? `$${fmtPrice(fund.analyst_target_low)} – $${fmtPrice(fund.analyst_target_high)}`
-                : "—"
-            }
-          />
-          <Row
-            label="Trailing P/E"
-            value={fund.trailing_pe ? fund.trailing_pe.toFixed(1) : "—"}
-          />
-          <Row
-            label="Forward P/E"
-            value={fund.forward_pe ? fund.forward_pe.toFixed(1) : "—"}
-          />
-        </dl>
+        <>
+          <dl className="grid grid-cols-2 gap-y-2 text-sm">
+            <Row label="Next earnings" value={fund.next_earnings ?? "—"} />
+            <Row label="Ex-dividend" value={fund.ex_dividend ?? "—"} />
+            <Row
+              label="Analyst target avg"
+              value={
+                fund.analyst_target_mean
+                  ? `$${fmtPrice(fund.analyst_target_mean)}` +
+                    (fund.analyst_count ? ` (${fund.analyst_count})` : "")
+                  : "—"
+              }
+            />
+            <Row
+              label="Target range"
+              value={
+                fund.analyst_target_low && fund.analyst_target_high
+                  ? `$${fmtPrice(fund.analyst_target_low)} – $${fmtPrice(fund.analyst_target_high)}`
+                  : "—"
+              }
+            />
+            <Row
+              label="Trailing P/E"
+              value={fund.trailing_pe ? fund.trailing_pe.toFixed(1) : "—"}
+            />
+            <Row
+              label="Forward P/E"
+              value={fund.forward_pe ? fund.forward_pe.toFixed(1) : "—"}
+            />
+            <Row
+              label="52W high"
+              value={
+                fund.fifty_two_week_high ? `$${fmtPrice(fund.fifty_two_week_high)}` : "—"
+              }
+            />
+            <Row
+              label="52W low"
+              value={
+                fund.fifty_two_week_low ? `$${fmtPrice(fund.fifty_two_week_low)}` : "—"
+              }
+            />
+          </dl>
+          {fund.analyst_recommendation && fund.analyst_recommendation.total > 0 && (
+            <RecommendationBar rec={fund.analyst_recommendation} />
+          )}
+          {!hasAnalystData && (
+            <p className="mt-2 text-xs text-(--color-text-dim)">
+              Analyst coverage data not available for this ticker on the free Finnhub
+              tier.
+            </p>
+          )}
+        </>
       )}
+    </div>
+  );
+}
+
+function RecommendationBar({
+  rec,
+}: {
+  rec: NonNullable<StockFundamentals["analyst_recommendation"]>;
+}) {
+  const segs = [
+    { label: "Strong Buy", count: rec.strong_buy, color: "bg-emerald-500" },
+    { label: "Buy", count: rec.buy, color: "bg-(--color-up)" },
+    { label: "Hold", count: rec.hold, color: "bg-yellow-500" },
+    { label: "Sell", count: rec.sell, color: "bg-orange-500" },
+    { label: "Strong Sell", count: rec.strong_sell, color: "bg-(--color-down)" },
+  ];
+  return (
+    <div className="mt-3">
+      <div className="mb-1 flex items-baseline justify-between text-[11px]">
+        <span className="text-(--color-text-dim) uppercase tracking-wide">
+          Analyst recommendation
+        </span>
+        <span className="text-(--color-text-dim)">
+          {rec.total} analyst{rec.total === 1 ? "" : "s"}
+          {rec.period ? ` · ${rec.period}` : ""}
+        </span>
+      </div>
+      <div className="flex h-2 overflow-hidden rounded-full bg-(--color-panel-2)">
+        {segs.map((s) =>
+          s.count > 0 ? (
+            <div
+              key={s.label}
+              className={s.color}
+              style={{ width: `${(s.count / rec.total) * 100}%` }}
+              title={`${s.label}: ${s.count}`}
+            />
+          ) : null,
+        )}
+      </div>
+      <div className="mt-1 flex justify-between text-[10px] text-(--color-text-dim) tabular-nums">
+        {segs.map((s) => (
+          <span key={s.label}>{s.count}</span>
+        ))}
+      </div>
     </div>
   );
 }

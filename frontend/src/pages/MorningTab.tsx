@@ -1,6 +1,7 @@
 import { Calendar } from "../components/Calendar";
 import { MarketContext } from "../components/MarketContext";
 import { MarketMovers } from "../components/MarketMovers";
+import { MarketNews } from "../components/MarketNews";
 
 export default function MorningTab({ refreshNonce }: { refreshNonce: number }) {
   return (
@@ -8,6 +9,7 @@ export default function MorningTab({ refreshNonce }: { refreshNonce: number }) {
       <MarketContext refreshNonce={refreshNonce} />
       <MarketMovers refreshNonce={refreshNonce} />
       <Calendar refreshNonce={refreshNonce} />
+      <MarketNews refreshNonce={refreshNonce} />
     </div>
   );
 }

@@ -89,6 +89,54 @@ async def stock_news(symbol: str, limit: int = 10) -> dict[str, Any]:
     return {"items": trimmed}
 
 
+@router.get("/{symbol}/insider")
+async def stock_insider(symbol: str) -> dict[str, Any]:
+    """Last 90 days of Form 4 insider transactions, plus a buy/sell summary."""
+    sym = symbol.upper()
+    try:
+        rows = await finnhub.insider_transactions(sym)
+    except RuntimeError as e:
+        return {"items": [], "summary": None, "warning": str(e)}
+    except Exception as e:
+        return {"items": [], "summary": None, "warning": f"Finnhub error: {e}"}
+
+    items = []
+    buy_shares = sell_shares = 0.0
+    buy_value = sell_value = 0.0
+    for r in rows:
+        change = float(r.get("change") or 0)
+        share_value = float(r.get("share") or 0) * float(r.get("transactionPrice") or 0)
+        if change > 0:
+            buy_shares += change
+            buy_value += abs(share_value)
+        elif change < 0:
+            sell_shares += abs(change)
+            sell_value += abs(share_value)
+        items.append(
+            {
+                "name": r.get("name"),
+                "share": float(r.get("share") or 0),
+                "change": change,
+                "transaction_price": float(r.get("transactionPrice") or 0),
+                "transaction_code": r.get("transactionCode"),
+                "transaction_date": r.get("transactionDate"),
+                "filing_date": r.get("filingDate"),
+            }
+        )
+    summary = (
+        {
+            "buy_shares": buy_shares,
+            "sell_shares": sell_shares,
+            "buy_value": buy_value,
+            "sell_value": sell_value,
+            "net_shares": buy_shares - sell_shares,
+        }
+        if items
+        else None
+    )
+    return {"items": items, "summary": summary}
+
+
 @router.get("/{symbol}/fundamentals")
 async def stock_fundamentals(symbol: str) -> dict[str, Any]:
     """Combined fundamentals. Prefer Finnhub (reliable) and fall back to yfinance

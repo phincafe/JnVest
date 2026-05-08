@@ -315,31 +315,53 @@ function ChainTable({
     return <div className="py-6 text-center text-sm text-(--color-text-dim)">No contracts.</div>;
   }
 
+  // Robinhood-style: when "both", show only the most useful columns per side
+  // (Bid / Ask / Last / Vol / IV / Delta), ITM-shaded background, ATM ring.
+  const compact = side === "both";
+
   return (
-    <div className="max-h-96 overflow-auto">
+    <div className="max-h-[28rem] overflow-auto rounded-lg border border-(--color-border)">
       <table className="min-w-full text-xs">
-        <thead className="sticky top-0 z-10 bg-(--color-panel-2) text-(--color-text-dim)">
+        <thead className="sticky top-0 z-10 bg-(--color-panel-2) text-[10px] uppercase tracking-wide text-(--color-text-dim)">
           <tr>
-            {side !== "puts" && <Cols title="Call" />}
-            <th className="px-2 py-1.5 text-center font-semibold">Strike</th>
-            {side !== "calls" && <Cols title="Put" />}
+            {side !== "puts" && (
+              <SideHeader title="Calls" align="right" compact={compact} />
+            )}
+            <th className="px-3 py-2 text-center font-semibold text-(--color-text)">
+              Strike
+            </th>
+            {side !== "calls" && (
+              <SideHeader title="Puts" align="left" compact={compact} />
+            )}
           </tr>
         </thead>
         <tbody>
           {merged.map(({ strike, call, put }) => {
             const atm = Math.abs(strike - spot) < 0.5;
+            const callItm = !!call && spot > strike;
+            const putItm = !!put && spot < strike;
             return (
               <tr
                 key={strike}
-                className={`border-t border-(--color-border) ${
-                  atm ? "bg-(--color-accent)/10" : ""
+                className={`border-t border-(--color-border)/60 ${
+                  atm ? "outline outline-1 outline-(--color-accent)/60" : ""
                 }`}
               >
-                {side !== "puts" && <RowCells row={call} />}
-                <td className="px-2 py-1 text-center font-medium tabular-nums">
-                  {strike.toFixed(2)}
+                {side !== "puts" && (
+                  <RowCells row={call} itm={callItm} compact={compact} />
+                )}
+                <td
+                  className={`sticky left-1/2 z-[1] px-3 py-2 text-center text-sm tabular-nums ${
+                    atm
+                      ? "bg-(--color-accent)/15 font-bold text-(--color-text)"
+                      : "bg-(--color-panel) font-semibold"
+                  }`}
+                >
+                  {strike.toFixed(strike >= 100 ? 0 : 2)}
                 </td>
-                {side !== "calls" && <RowCells row={put} />}
+                {side !== "calls" && (
+                  <RowCells row={put} itm={putItm} compact={compact} />
+                )}
               </tr>
             );
           })}
@@ -349,22 +371,48 @@ function ChainTable({
   );
 }
 
-function Cols({ title }: { title: string }) {
+function SideHeader({
+  title,
+  align,
+  compact,
+}: {
+  title: string;
+  align: "left" | "right";
+  compact: boolean;
+}) {
+  const cols = compact ? ["Bid", "Ask", "Last", "Vol", "IV", "Δ"] : ["Bid", "Ask", "Last", "Vol", "OI", "IV", "Δ", "Θ", "Sprd%"];
+  const headers = align === "right" ? [title, ...cols] : [...cols, title];
+  // The title cell merges via colspan visually; render headers in line.
   return (
     <>
-      <th className="px-2 py-1.5 text-right font-medium" colSpan={9}>
-        {title}
-      </th>
+      {headers.map((h, i) => (
+        <th
+          key={`${align}-${i}`}
+          className={`px-2 py-2 ${align === "right" ? "text-right" : "text-left"} font-medium`}
+        >
+          {h}
+        </th>
+      ))}
     </>
   );
 }
 
-function RowCells({ row }: { row: OptionRow | null }) {
+function RowCells({
+  row,
+  itm,
+  compact,
+}: {
+  row: OptionRow | null;
+  itm: boolean;
+  compact: boolean;
+}) {
+  const cellBg = itm ? "bg-(--color-up)/10" : "";
+  const colCount = compact ? 6 : 9;
   if (!row) {
     return (
       <>
-        {Array.from({ length: 9 }).map((_, i) => (
-          <td key={i} className="px-2 py-1 text-right text-(--color-text-dim)">
+        {Array.from({ length: colCount + 1 }).map((_, i) => (
+          <td key={i} className={`px-2 py-2 text-right text-(--color-text-dim) ${cellBg}`}>
             —
           </td>
         ))}
@@ -372,19 +420,37 @@ function RowCells({ row }: { row: OptionRow | null }) {
     );
   }
   const unusual = row.unusual_volume ? "text-(--color-up) font-medium" : "";
+  if (compact) {
+    return (
+      <>
+        <td className={`px-2 py-2 text-right tabular-nums ${cellBg}`}>{fmt(row.bid)}</td>
+        <td className={`px-2 py-2 text-right tabular-nums ${cellBg}`}>{fmt(row.ask)}</td>
+        <td className={`px-2 py-2 text-right tabular-nums ${cellBg}`}>{fmt(row.last)}</td>
+        <td className={`px-2 py-2 text-right tabular-nums ${unusual} ${cellBg}`}>
+          {row.volume}
+        </td>
+        <td className={`px-2 py-2 text-right tabular-nums ${cellBg}`}>{ivPct(row.iv)}</td>
+        <td className={`px-2 py-2 text-right tabular-nums ${cellBg}`}>{fmt(row.delta)}</td>
+        <td className={`px-2 py-2 text-right text-(--color-text-dim) ${cellBg}`}></td>
+      </>
+    );
+  }
   return (
     <>
-      <td className="px-2 py-1 text-right tabular-nums">{fmt(row.bid)}</td>
-      <td className="px-2 py-1 text-right tabular-nums">{fmt(row.ask)}</td>
-      <td className="px-2 py-1 text-right tabular-nums">{fmt(row.last)}</td>
-      <td className={`px-2 py-1 text-right tabular-nums ${unusual}`}>{row.volume}</td>
-      <td className="px-2 py-1 text-right tabular-nums">{row.open_interest}</td>
-      <td className="px-2 py-1 text-right tabular-nums">{ivPct(row.iv)}</td>
-      <td className="px-2 py-1 text-right tabular-nums">{fmt(row.delta)}</td>
-      <td className="px-2 py-1 text-right tabular-nums">{fmt(row.theta)}</td>
-      <td className="px-2 py-1 text-right tabular-nums">
+      <td className={`px-2 py-2 text-right tabular-nums ${cellBg}`}>{fmt(row.bid)}</td>
+      <td className={`px-2 py-2 text-right tabular-nums ${cellBg}`}>{fmt(row.ask)}</td>
+      <td className={`px-2 py-2 text-right tabular-nums ${cellBg}`}>{fmt(row.last)}</td>
+      <td className={`px-2 py-2 text-right tabular-nums ${unusual} ${cellBg}`}>
+        {row.volume}
+      </td>
+      <td className={`px-2 py-2 text-right tabular-nums ${cellBg}`}>{row.open_interest}</td>
+      <td className={`px-2 py-2 text-right tabular-nums ${cellBg}`}>{ivPct(row.iv)}</td>
+      <td className={`px-2 py-2 text-right tabular-nums ${cellBg}`}>{fmt(row.delta)}</td>
+      <td className={`px-2 py-2 text-right tabular-nums ${cellBg}`}>{fmt(row.theta)}</td>
+      <td className={`px-2 py-2 text-right tabular-nums ${cellBg}`}>
         {pct(row.spread_pct == null ? null : row.spread_pct / 100, 1)}
       </td>
+      <td className={`px-2 py-2 text-right text-(--color-text-dim) ${cellBg}`}></td>
     </>
   );
 }
