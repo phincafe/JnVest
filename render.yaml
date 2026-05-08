@@ -1,8 +1,9 @@
-databases:
-  - name: jnvest-db
-    plan: free
-    databaseName: jnvest
-    user: jnvest
+# Render Blueprint for JnVest.
+#
+# DATABASE_URL is filled in via the dashboard (sync: false) — Render's free tier
+# allows only one Postgres per account, so we don't provision one here. Bring your
+# own (existing Render Postgres, Neon, Supabase, etc.) or leave DATABASE_URL blank
+# to use SQLite (data is lost on every redeploy unless you attach a paid disk).
 
 services:
   - type: web
@@ -24,9 +25,7 @@ services:
       - key: NODE_VERSION
         value: 20.18.0
       - key: DATABASE_URL
-        fromDatabase:
-          name: jnvest-db
-          property: connectionString
+        sync: false
       - key: APP_PASSWORD
         sync: false
       - key: SESSION_SECRET
