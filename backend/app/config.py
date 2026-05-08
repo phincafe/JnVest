@@ -1,11 +1,16 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Load .env from the repo root (one level above backend/) OR backend/.env, in that order.
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_ENV_FILES = (_REPO_ROOT / ".env", _REPO_ROOT / "backend" / ".env")
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=tuple(str(p) for p in _ENV_FILES),
         env_file_encoding="utf-8",
         extra="ignore",
     )
