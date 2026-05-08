@@ -227,11 +227,16 @@ export function IndexChart() {
       </div>
 
       <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-2">
-        {!data ? (
-          <Skeleton className="h-64 w-full" />
-        ) : (
-          <div ref={chartContainer} className="h-[260px] w-full sm:h-[320px]" />
-        )}
+        {/* Always render the chart container so the createChart effect has a
+            target on first mount. Overlay a skeleton while data loads. */}
+        <div className="relative h-[260px] w-full sm:h-[320px]">
+          <div ref={chartContainer} className="absolute inset-0" />
+          {!data && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Skeleton className="h-full w-full" />
+            </div>
+          )}
+        </div>
         <div className="mt-1 flex items-center justify-between px-2 text-[10px] text-(--color-text-dim)">
           <span>
             {isLive

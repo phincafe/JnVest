@@ -14,9 +14,9 @@ export default function MorningTab({
 }) {
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-4">
-      <KeyEvents refreshNonce={refreshNonce} />
-      <IndexChart />
       <MarketContext refreshNonce={refreshNonce} />
+      <IndexChart />
+      <KeyEvents refreshNonce={refreshNonce} />
       <MarketMovers refreshNonce={refreshNonce} />
       <Calendar refreshNonce={refreshNonce} />
       <MarketNews refreshNonce={refreshNonce} />
