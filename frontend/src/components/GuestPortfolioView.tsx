@@ -217,6 +217,9 @@ function CategoryCard({
         <p className="text-xs text-(--color-text-dim)">{subtitle}</p>
       </header>
 
+      <div className="mb-2 text-[10px] uppercase tracking-wide text-(--color-text-dim)">
+        Allocation by position
+      </div>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="h-56">
           <ResponsiveContainer width="100%" height="100%">
