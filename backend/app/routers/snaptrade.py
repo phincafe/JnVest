@@ -139,16 +139,23 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
             opt_sym = _safe_get(sym, "option_symbol") or {}
             underlying = _ticker_of(_safe_get(opt_sym, "underlying_symbol")) or _ticker_of(sym)
             qty = float(op.get("units") or 0)
+            # SnapTrade quirk: `price` is per-share (current premium), but
+            # `average_purchase_price` is the per-contract dollar cost
+            # (i.e. already × the 100-share multiplier). So we apply the
+            # multiplier to current value only, not to cost.
             price = float(op.get("price") or 0)
             avg_raw = op.get("average_purchase_price")
-            avg = float(avg_raw) if avg_raw else None
+            avg_per_contract = float(avg_raw) if avg_raw else None
             multiplier = 100.0
             mkt_val = qty * price * multiplier
-            cost = (qty * avg * multiplier) if avg else None
+            cost = (qty * avg_per_contract) if avg_per_contract else None
             pl = (mkt_val - cost) if cost is not None else None
             pl_pct = ((mkt_val - cost) / cost * 100.0) if cost else None
             if pl is not None:
                 total_pl += pl
+            # Show the per-share avg in the UI (divide the per-contract figure)
+            # so columns are visually comparable to `price`.
+            avg_per_share = (avg_per_contract / multiplier) if avg_per_contract else None
             options.append(
                 {
                     "account_id": acct_id,
@@ -161,7 +168,7 @@ def _flatten(holdings: list[dict[str, Any]]) -> dict[str, Any]:
                     "expiration": _safe_get(opt_sym, "expiration_date"),
                     "quantity": qty,
                     "price": price,
-                    "avg_cost": avg,
+                    "avg_cost": avg_per_share,
                     "market_value": mkt_val,
                     "unrealized_pl": pl,
                     "unrealized_pl_pct": pl_pct,
