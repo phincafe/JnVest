@@ -42,12 +42,18 @@ def _get_state() -> _State:
     return _state
 
 
+# Always-streamed symbols regardless of watchlist contents — powers the live
+# IndexChart on the Morning tab even if the user removes them from watchlist.
+_BASE_STREAM_SYMBOLS = {"SPY", "QQQ", "DIA", "IWM"}
+
+
 def current_watchlist_symbols() -> list[str]:
     db = SessionLocal()
     try:
-        return [
+        watchlist = {
             r.symbol for r in db.query(WatchlistTicker).order_by(WatchlistTicker.sort_order).all()
-        ]
+        }
+        return sorted(watchlist | _BASE_STREAM_SYMBOLS)
     finally:
         db.close()
 

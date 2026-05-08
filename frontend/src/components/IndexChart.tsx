@@ -1,27 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Activity } from "lucide-react";
+import { Activity, Wifi, WifiOff } from "lucide-react";
 import {
   AreaSeries,
   CandlestickSeries,
   createChart,
   type IChartApi,
+  type ISeriesApi,
+  type Time,
 } from "lightweight-charts";
 import { api } from "../api/client";
 import type { Bar } from "../api/types";
 import { useCachedFetch } from "../hooks/useCachedFetch";
+import { useLiveQuotes } from "../hooks/useLiveQuotes";
 import { changeClass, fmtPct, fmtPrice } from "../lib/format";
 import { Skeleton } from "./Skeleton";
 
-const REFRESH_MS = 15_000; // poll every 15s; IEX bars print on the minute
+const REFRESH_MS = 15_000;
 
-const INDEXES: { sym: string; label: string }[] = [
+const INDEXES = [
   { sym: "SPY", label: "S&P 500" },
   { sym: "QQQ", label: "Nasdaq" },
   { sym: "DIA", label: "Dow" },
   { sym: "IWM", label: "Russell 2K" },
 ];
 
-const INTERVALS: { value: string; label: string }[] = [
+const INTERVALS = [
   { value: "1Min", label: "1m" },
   { value: "5Min", label: "5m" },
   { value: "15Min", label: "15m" },
@@ -29,6 +32,9 @@ const INTERVALS: { value: string; label: string }[] = [
 ];
 
 type Resp = { symbol: string; interval: string; bars: Bar[] };
+
+const tToTime = (t: string): Time =>
+  Math.floor(new Date(t).getTime() / 1000) as unknown as Time;
 
 export function IndexChart() {
   const [symbol, setSymbol] = useState("SPY");
@@ -41,57 +47,36 @@ export function IndexChart() {
     { refreshMs: REFRESH_MS, staleAfterMs: 5_000 },
   );
 
-  const ref = useRef<HTMLDivElement>(null);
+  const { quotes: live, status: streamStatus } = useLiveQuotes();
+  const liveTick = live.get(symbol);
+
+  const chartContainer = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<"Area"> | ISeriesApi<"Candlestick"> | null>(null);
+  const lastBarRef = useRef<Bar | null>(null);
 
-  // Last bar / change vs prior session close (first bar of today's set).
-  const summary = useMemo(() => {
-    if (!data?.bars?.length) return null;
-    const bars = data.bars;
-    const last = bars[bars.length - 1];
-    const first = bars[0];
-    const open = first.o;
-    const change = last.c - open;
-    const pct = open ? (change / open) * 100 : 0;
-    return { last: last.c, change, pct, bars };
-  }, [data]);
-
+  // Create / destroy the chart on chartType change. Keep the instance alive
+  // across data updates so live ticks can mutate the last bar without flicker.
   useEffect(() => {
-    if (!ref.current || !data?.bars?.length) return;
-    const chart = createChart(ref.current, {
+    if (!chartContainer.current) return;
+    const chart = createChart(chartContainer.current, {
       autoSize: true,
-      layout: {
-        background: { color: "#131722" },
-        textColor: "#8b93a7",
-      },
-      grid: {
-        vertLines: { color: "#1f2433" },
-        horzLines: { color: "#1f2433" },
-      },
+      layout: { background: { color: "#131722" }, textColor: "#8b93a7" },
+      grid: { vertLines: { color: "#1f2433" }, horzLines: { color: "#1f2433" } },
       timeScale: { borderColor: "#232838", timeVisible: true, secondsVisible: false },
       rightPriceScale: { borderColor: "#232838" },
     });
     chartRef.current = chart;
 
-    const tToTime = (t: string) =>
-      Math.floor(new Date(t).getTime() / 1000) as unknown as number;
-
-    const bars = data.bars;
     if (chartType === "area") {
-      const series = chart.addSeries(AreaSeries, {
+      seriesRef.current = chart.addSeries(AreaSeries, {
         topColor: "rgba(59, 130, 246, 0.4)",
         bottomColor: "rgba(59, 130, 246, 0.02)",
         lineColor: "#3b82f6",
         lineWidth: 2,
       });
-      series.setData(
-        bars.map((b) => ({
-          time: tToTime(b.t),
-          value: b.c,
-        })) as never,
-      );
     } else {
-      const series = chart.addSeries(CandlestickSeries, {
+      seriesRef.current = chart.addSeries(CandlestickSeries, {
         upColor: "#16a34a",
         downColor: "#dc2626",
         borderUpColor: "#16a34a",
@@ -99,22 +84,74 @@ export function IndexChart() {
         wickUpColor: "#16a34a",
         wickDownColor: "#dc2626",
       });
-      series.setData(
+    }
+    return () => {
+      chart.remove();
+      chartRef.current = null;
+      seriesRef.current = null;
+      lastBarRef.current = null;
+    };
+  }, [chartType]);
+
+  // Push fresh polled bars into the chart series.
+  useEffect(() => {
+    if (!seriesRef.current || !data?.bars?.length) return;
+    const bars = data.bars;
+    if (chartType === "area") {
+      (seriesRef.current as ISeriesApi<"Area">).setData(
+        bars.map((b) => ({ time: tToTime(b.t), value: b.c })),
+      );
+    } else {
+      (seriesRef.current as ISeriesApi<"Candlestick">).setData(
         bars.map((b) => ({
           time: tToTime(b.t),
           open: b.o,
           high: b.h,
           low: b.l,
           close: b.c,
-        })) as never,
+        })),
       );
     }
-    chart.timeScale().fitContent();
-    return () => {
-      chart.remove();
-      chartRef.current = null;
-    };
+    lastBarRef.current = { ...bars[bars.length - 1] };
+    chartRef.current?.timeScale().fitContent();
   }, [data, chartType]);
+
+  // Live tick updates: mutate the last bar's close (and high/low) without
+  // re-rendering the whole series. This is the "WebSocket streaming" path.
+  useEffect(() => {
+    if (!seriesRef.current || !liveTick || !lastBarRef.current) return;
+    const last = lastBarRef.current;
+    last.c = liveTick.price;
+    last.h = Math.max(last.h, liveTick.price);
+    last.l = Math.min(last.l, liveTick.price);
+    if (chartType === "area") {
+      (seriesRef.current as ISeriesApi<"Area">).update({
+        time: tToTime(last.t),
+        value: last.c,
+      });
+    } else {
+      (seriesRef.current as ISeriesApi<"Candlestick">).update({
+        time: tToTime(last.t),
+        open: last.o,
+        high: last.h,
+        low: last.l,
+        close: last.c,
+      });
+    }
+  }, [liveTick, chartType]);
+
+  // Header summary: prefer live tick price when available.
+  const summary = useMemo(() => {
+    if (!data?.bars?.length) return null;
+    const bars = data.bars;
+    const open = bars[0].o;
+    const lastClose = liveTick?.price ?? bars[bars.length - 1].c;
+    const change = lastClose - open;
+    const pct = open ? (change / open) * 100 : 0;
+    return { last: lastClose, change, pct, count: bars.length };
+  }, [data, liveTick]);
+
+  const isLive = streamStatus === "live";
 
   return (
     <section className="space-y-2">
@@ -136,6 +173,21 @@ export function IndexChart() {
               </span>
             </span>
           )}
+          <span
+            className="ml-2 flex items-center gap-1 text-[10px] text-(--color-text-dim)"
+            title={
+              isLive
+                ? "WebSocket connected — last bar updates in real-time"
+                : "WebSocket disconnected — polling every 15s"
+            }
+          >
+            {isLive ? (
+              <Wifi size={11} className="text-(--color-up)" />
+            ) : (
+              <WifiOff size={11} />
+            )}
+            {isLive ? "Live" : "Polling"}
+          </span>
         </h2>
         <div className="flex flex-wrap items-center gap-1">
           <Picker
@@ -143,11 +195,7 @@ export function IndexChart() {
             options={INDEXES.map((i) => ({ value: i.sym, label: i.label }))}
             onChange={setSymbol}
           />
-          <Picker
-            value={interval}
-            options={INTERVALS}
-            onChange={setInterval}
-          />
+          <Picker value={interval} options={INTERVALS} onChange={setInterval} />
           <div className="flex items-center gap-0 rounded-md border border-(--color-border) bg-(--color-panel) p-0.5">
             <ChartTypeBtn
               active={chartType === "area"}
@@ -169,12 +217,16 @@ export function IndexChart() {
         {!data ? (
           <Skeleton className="h-64 w-full" />
         ) : (
-          <div ref={ref} className="h-[260px] w-full sm:h-[320px]" />
+          <div ref={chartContainer} className="h-[260px] w-full sm:h-[320px]" />
         )}
         <div className="mt-1 flex items-center justify-between px-2 text-[10px] text-(--color-text-dim)">
-          <span>Updates every 15s · IEX feed (real-time)</span>
+          <span>
+            {isLive
+              ? "Real-time via Alpaca WebSocket (IEX feed)"
+              : "Polled every 15s · IEX feed"}
+          </span>
           {summary && (
-            <span className="tabular-nums">{summary.bars.length} bars</span>
+            <span className="tabular-nums">{summary.count} bars</span>
           )}
         </div>
       </div>
