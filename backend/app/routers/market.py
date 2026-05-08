@@ -191,7 +191,11 @@ async def intraday(symbol: str, interval: str = "5Min") -> dict[str, Any]:
     sym = symbol.upper()
     # Tight window: today's premarket through now. ~14h covers pre-open
     # (4 AM ET) through after-hours (8 PM ET) on any timezone.
-    start = (datetime.utcnow() - timedelta(hours=14)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # Round `start` down to the nearest minute so the upstream `bars()` cache
+    # key is stable for ~60s. Without this, microsecond precision was making
+    # every request a cache miss (the actual cause of "chart loading slow").
+    now_minute = datetime.utcnow().replace(second=0, microsecond=0)
+    start = (now_minute - timedelta(hours=14)).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
         bars, daily = await asyncio.gather(
             alpaca.bars(sym, timeframe=interval, start=start, limit=1000),

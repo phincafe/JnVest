@@ -46,11 +46,17 @@ export function IndexChart() {
   const [interval, setInterval] = useState("5Min");
   const [chartType, setChartType] = useState<"area" | "candle">("area");
 
-  const { data, isFetching } = useCachedFetch<Resp>(
+  const { data: freshData, isFetching } = useCachedFetch<Resp>(
     `intraday:${symbol}:${interval}`,
     () => api.get(`/market/intraday/${symbol}?interval=${interval}`),
-    { refreshMs: REFRESH_MS, staleAfterMs: 5_000 },
+    { refreshMs: REFRESH_MS, staleAfterMs: 30_000 },
   );
+
+  // Keep last successful data across symbol/interval changes so the chart
+  // doesn't flash a skeleton when the cache key changes.
+  const lastDataRef = useRef<Resp | null>(null);
+  if (freshData) lastDataRef.current = freshData;
+  const data = freshData ?? lastDataRef.current;
 
   const { quotes: live, status: streamStatus } = useLiveQuotes();
   const liveTick = live.get(symbol);

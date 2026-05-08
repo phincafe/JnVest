@@ -124,7 +124,9 @@ export function App() {
             onConsumedRequestedSymbol={() => setRequestedSymbol(null)}
           />
         )}
-        {active === "portfolio" && <PortfolioTab refreshNonce={refreshNonce} />}
+        {active === "portfolio" && (
+          <PortfolioTab refreshNonce={refreshNonce} isGuest={role === "guest"} />
+        )}
         {active === "calendar" && <CalendarTab refreshNonce={refreshNonce} />}
       </Suspense>
 
