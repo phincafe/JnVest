@@ -50,7 +50,13 @@ export function Header({
     <header className="sticky top-0 z-20 border-b border-(--color-border) bg-(--color-bg)/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-2.5">
         <div className="flex items-center gap-3">
-          <h1 className="text-base font-semibold tracking-tight">JnVest</h1>
+          <h1 className="m-0">
+            <img
+              src="/logo.svg"
+              alt="Jnvest"
+              className="h-7 w-auto sm:h-8"
+            />
+          </h1>
           {isGuest && (
             <span
               className="rounded bg-purple-500/30 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-purple-200"
