@@ -120,6 +120,12 @@ async def health() -> dict:
         "ok": True,
         "is_paper": settings.is_paper,
         "alpaca_configured": bool(settings.alpaca_api_key and settings.alpaca_api_secret),
+        "finnhub_configured": bool(settings.finnhub_api_key),
+        "snaptrade_configured": bool(
+            settings.snaptrade_client_id and settings.snaptrade_consumer_key
+        ),
+        "plaid_configured": bool(settings.plaid_client_id and settings.plaid_secret),
+        "db": "postgres" if settings.database_url.startswith("postgres") else "sqlite",
     }
 
 
