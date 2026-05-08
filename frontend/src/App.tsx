@@ -4,6 +4,7 @@ import { api } from "./api/client";
 import type { AuthStatus } from "./api/types";
 import { Login } from "./components/Login";
 import { MarketContext } from "./components/MarketContext";
+import { StockDetail } from "./components/StockDetail";
 import { Watchlist } from "./components/Watchlist";
 
 export function App() {
@@ -66,6 +67,7 @@ export function App() {
           selected={selectedSymbol}
           onSelect={setSelectedSymbol}
         />
+        <StockDetail symbol={selectedSymbol} />
         <ApiBanner />
       </main>
     </div>

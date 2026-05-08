@@ -51,3 +51,48 @@ export type WatchlistRow = {
 export type WatchlistQuotesResponse = {
   rows: WatchlistRow[];
 };
+
+export type Bar = {
+  t: string;
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+  v: number;
+};
+
+export type StockBarsResponse = {
+  symbol: string;
+  range: string;
+  timeframe: string;
+  bars: Bar[];
+  sma20: (number | null)[];
+  sma50: (number | null)[];
+  sma200: (number | null)[];
+};
+
+export type NewsItem = {
+  headline: string;
+  source: string;
+  url: string;
+  summary: string;
+  ts: number;
+};
+
+export type StockNewsResponse = {
+  items: NewsItem[];
+  warning?: string;
+};
+
+export type StockFundamentals = {
+  symbol: string;
+  next_earnings: string | null;
+  ex_dividend: string | null;
+  analyst_target_mean: number | null;
+  analyst_target_high: number | null;
+  analyst_target_low: number | null;
+  analyst_count: number | null;
+  market_cap: number | null;
+  trailing_pe: number | null;
+  forward_pe: number | null;
+};
