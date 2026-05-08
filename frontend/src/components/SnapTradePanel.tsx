@@ -116,7 +116,7 @@ export function SnapTradePanel({ refreshNonce }: { refreshNonce: number }) {
     <section className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-(--color-text-dim)">
-          Brokerages (via SnapTrade)
+          Brokerages
         </h2>
         <div className="flex items-center gap-2">
           <button
