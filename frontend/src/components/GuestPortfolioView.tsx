@@ -38,7 +38,14 @@ function bucketLongTail(slices: Slice[]): Slice[] {
   ];
 }
 
-export function GuestPortfolioView({ holdings }: { holdings: SnapTradeHoldings }) {
+export function GuestPortfolioView({
+  holdings,
+  ownerMode = false,
+}: {
+  holdings: SnapTradeHoldings;
+  /** When true, hide the "public view / $ hidden" framing — owner already sees $ above. */
+  ownerMode?: boolean;
+}) {
   // Total portfolio % per category (lets us label "Stocks: 78% of portfolio")
   const stockPctOfPortfolio = holdings.positions.reduce(
     (s, p) => s + (p.allocation_pct ?? 0),
@@ -88,11 +95,12 @@ export function GuestPortfolioView({ holdings }: { holdings: SnapTradeHoldings }
     <section className="space-y-4">
       <div>
         <h2 className="text-sm font-medium text-(--color-text-dim)">
-          Public portfolio view
+          {ownerMode ? "Portfolio overview" : "Public portfolio view"}
         </h2>
         <p className="mt-1 text-xs text-(--color-text-dim)">
-          What&apos;s held + portfolio weight (%). $ amounts and per-account
-          breakdowns are hidden.
+          {ownerMode
+            ? "Allocation by stock, option underlying, and cash."
+            : "What's held + portfolio weight (%). $ amounts and per-account breakdowns are hidden."}
         </p>
       </div>
 

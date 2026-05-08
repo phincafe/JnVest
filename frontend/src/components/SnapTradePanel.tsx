@@ -16,6 +16,32 @@ import { Skeleton } from "./Skeleton";
 
 const REFRESH_MS = 5 * 60_000;
 
+/** Add per-position allocation_pct (% of invested) and totals.cash_pct so the
+ * GuestPortfolioView donuts can render against owner data — same component,
+ * just sourced from $ values instead of pre-computed weights. */
+function withAllocationPcts(h: SnapTradeHoldings): SnapTradeHoldings {
+  const invested =
+    h.positions.reduce((s, p) => s + (p.market_value || 0), 0) +
+    h.options.reduce((s, o) => s + (o.market_value || 0), 0);
+  const cash = h.totals?.cash || 0;
+  const total = invested + cash;
+  return {
+    ...h,
+    positions: h.positions.map((p) => ({
+      ...p,
+      allocation_pct: invested ? ((p.market_value || 0) / invested) * 100 : 0,
+    })),
+    options: h.options.map((o) => ({
+      ...o,
+      allocation_pct: invested ? ((o.market_value || 0) / invested) * 100 : 0,
+    })),
+    totals: {
+      ...h.totals,
+      cash_pct: total ? (cash / total) * 100 : null,
+    },
+  };
+}
+
 export function SnapTradePanel({
   refreshNonce,
   isGuest = false,
@@ -240,6 +266,12 @@ export function SnapTradePanel({
           ) : (
             <>
               {holdings && <TotalsCard totals={holdings.totals} />}
+              {holdings && (
+                <GuestPortfolioView
+                  ownerMode
+                  holdings={withAllocationPcts(holdings)}
+                />
+              )}
               {holdings && (
                 <AccountChips
                   accounts={holdings.accounts}
