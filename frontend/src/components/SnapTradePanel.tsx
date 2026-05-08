@@ -231,27 +231,53 @@ function AccountChips({
   onSelect: (id: string) => void;
 }) {
   const totalEq = accounts.reduce((s, a) => s + (a.equity || a.balance || 0), 0);
+  const [sort, setSort] = useState<"equity" | "name" | "broker">("equity");
+
+  const enriched = accounts.map((a) => {
+    const acctPos = positions.filter((p) => p.account_id === a.id);
+    const acctOpts = options.filter((o) => o.account_id === a.id);
+    const cost =
+      acctPos.reduce((s, p) => s + (p.avg_cost ? p.quantity * p.avg_cost : 0), 0) +
+      acctOpts.reduce((s, o) => s + (o.avg_cost ? o.quantity * o.avg_cost * 100 : 0), 0);
+    const value =
+      acctPos.reduce((s, p) => s + p.market_value, 0) +
+      acctOpts.reduce((s, o) => s + o.market_value, 0);
+    const pl = cost ? value - cost : null;
+    const plPct = cost ? ((value - cost) / cost) * 100 : null;
+    return { account: a, pl, plPct };
+  });
+
+  const sorted = [...enriched].sort((a, b) => {
+    if (sort === "equity") return (b.account.balance || 0) - (a.account.balance || 0);
+    if (sort === "name") return a.account.name.localeCompare(b.account.name);
+    return (a.account.broker || "").localeCompare(b.account.broker || "");
+  });
+
   return (
-    <div className="-mx-1 flex items-stretch gap-2 overflow-x-auto px-1 py-1">
-      <Chip
-        active={selected === "all"}
-        onClick={() => onSelect("all")}
-        title="All accounts"
-        subtitle={`${accounts.length} brokerage${accounts.length === 1 ? "" : "s"}`}
-        amount={`$${fmtPrice(totalEq)}`}
-      />
-      {accounts.map((a) => {
-        const acctPos = positions.filter((p) => p.account_id === a.id);
-        const acctOpts = options.filter((o) => o.account_id === a.id);
-        const cost =
-          acctPos.reduce((s, p) => s + (p.avg_cost ? p.quantity * p.avg_cost : 0), 0) +
-          acctOpts.reduce((s, o) => s + (o.avg_cost ? o.quantity * o.avg_cost * 100 : 0), 0);
-        const value =
-          acctPos.reduce((s, p) => s + p.market_value, 0) +
-          acctOpts.reduce((s, o) => s + o.market_value, 0);
-        const pl = cost ? value - cost : null;
-        const plPct = cost ? ((value - cost) / cost) * 100 : null;
-        return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-end">
+        <label className="text-[11px] text-(--color-text-dim)">
+          Sort by{" "}
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as typeof sort)}
+            className="ml-1 rounded border border-(--color-border) bg-(--color-panel) px-1.5 py-0.5"
+          >
+            <option value="equity">Equity</option>
+            <option value="name">Name</option>
+            <option value="broker">Broker</option>
+          </select>
+        </label>
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <Chip
+          active={selected === "all"}
+          onClick={() => onSelect("all")}
+          title="All accounts"
+          subtitle={`${accounts.length} brokerage${accounts.length === 1 ? "" : "s"}`}
+          amount={`$${fmtPrice(totalEq)}`}
+        />
+        {sorted.map(({ account: a, pl, plPct }) => (
           <Chip
             key={a.id}
             active={selected === a.id}
@@ -262,8 +288,8 @@ function AccountChips({
             pl={pl}
             plPct={plPct}
           />
-        );
-      })}
+        ))}
+      </div>
     </div>
   );
 }
@@ -288,7 +314,7 @@ function Chip({
   return (
     <button
       onClick={onClick}
-      className={`flex min-w-[10rem] flex-col items-start gap-0.5 rounded-xl border p-3 text-left transition-colors ${
+      className={`flex min-h-[5.5rem] flex-col items-start gap-0.5 rounded-xl border p-3 text-left transition-colors ${
         active
           ? "border-(--color-accent) bg-(--color-accent)/10"
           : "border-(--color-border) bg-(--color-panel) hover:border-(--color-text-dim)"
@@ -645,33 +671,35 @@ function AccountSection({
             </>
           )}
         </div>
-        <div className="flex items-baseline gap-4 text-sm tabular-nums">
-          <span className="text-(--color-text-dim)">
-            Equity{" "}
-            <span className="text-(--color-text) font-medium">
-              ${fmtPrice(account.balance)}
-            </span>
+        {acctCost > 0 && (
+          <span className={`font-medium tabular-nums ${changeClass(acctPL)}`}>
+            {acctPL >= 0 ? "+" : "-"}${fmtPrice(Math.abs(acctPL))}
+            {acctPLPct != null && ` (${fmtPct(acctPLPct)})`}
           </span>
-          <span className="text-(--color-text-dim)">
-            Invested{" "}
-            <span className="text-(--color-text) font-medium">
-              ${fmtPrice(acctValue)}
-            </span>
-          </span>
-          <span className="text-(--color-text-dim)">
-            Cash{" "}
-            <span className="text-(--color-text) font-medium">
-              ${fmtPrice(account.cash)}
-            </span>
-          </span>
-          {acctCost > 0 && (
-            <span className={`font-medium ${changeClass(acctPL)}`}>
-              {acctPL >= 0 ? "+" : "-"}${fmtPrice(Math.abs(acctPL))}
-              {acctPLPct != null && ` (${fmtPct(acctPLPct)})`}
-            </span>
-          )}
-        </div>
+        )}
       </header>
+
+      <div className="grid grid-cols-3 gap-2 px-4 pt-3 sm:gap-3">
+        <AcctStat
+          label="Total Value"
+          value={`$${fmtPrice(account.balance)}`}
+          sub="cash + investments"
+        />
+        <AcctStat
+          label="Invested"
+          value={`$${fmtPrice(acctValue)}`}
+          sub={
+            acctCost > 0
+              ? `cost basis $${fmtPrice(acctCost)}`
+              : "—"
+          }
+        />
+        <AcctStat
+          label="Cash Available"
+          value={`$${fmtPrice(account.cash)}`}
+          sub=""
+        />
+      </div>
 
       <div className="space-y-4 p-4">
         {positions.length > 0 && <SubPositionsTable positions={positions} />}
@@ -681,6 +709,22 @@ function AccountSection({
           <div className="text-sm text-(--color-text-dim)">No positions, options, or orders.</div>
         )}
       </div>
+    </div>
+  );
+}
+
+function AcctStat({ label, value, sub }: { label: string; value: string; sub: string }) {
+  return (
+    <div className="rounded-lg border border-(--color-border) bg-(--color-panel-2) p-3">
+      <div className="text-[10px] uppercase tracking-wide text-(--color-text-dim)">
+        {label}
+      </div>
+      <div className="mt-0.5 text-base font-semibold tabular-nums sm:text-lg">{value}</div>
+      {sub && (
+        <div className="mt-0.5 text-[10px] text-(--color-text-dim) tabular-nums">
+          {sub}
+        </div>
+      )}
     </div>
   );
 }

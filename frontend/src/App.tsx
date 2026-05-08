@@ -5,7 +5,7 @@ import type { AuthStatus } from "./api/types";
 import { Header } from "./components/Header";
 import { Login } from "./components/Login";
 import { Skeleton } from "./components/Skeleton";
-import { Tabs, type TabDef } from "./components/Tabs";
+import { MobileTabBar, Tabs, type TabDef } from "./components/Tabs";
 
 const MorningTab = lazy(() => import("./pages/MorningTab"));
 const WatchlistTab = lazy(() => import("./pages/WatchlistTab"));
@@ -67,7 +67,7 @@ export function App() {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">
       <Header
         refreshNonce={refreshNonce}
         onRefresh={() => setRefreshNonce((n) => n + 1)}
@@ -81,6 +81,8 @@ export function App() {
         {active === "portfolio" && <PortfolioTab refreshNonce={refreshNonce} />}
         {active === "calendar" && <CalendarTab refreshNonce={refreshNonce} />}
       </Suspense>
+
+      <MobileTabBar tabs={TABS} active={active} onChange={setActive} />
     </div>
   );
 }

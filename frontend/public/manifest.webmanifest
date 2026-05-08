@@ -1,0 +1,19 @@
+{
+  "name": "JnVest — Daily Trading Dashboard",
+  "short_name": "JnVest",
+  "description": "Personal trading dashboard for stocks + options",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0b0d12",
+  "theme_color": "#0b0d12",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
