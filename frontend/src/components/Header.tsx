@@ -94,12 +94,12 @@ export function Header({
           {onSearch && (
             <button
               onClick={onSearch}
-              className="hidden items-center gap-1.5 rounded-md border border-(--color-border) px-2.5 py-1.5 text-xs text-(--color-text-dim) hover:text-(--color-text) sm:flex"
+              className="flex h-9 items-center justify-center gap-1.5 rounded-md border border-(--color-border) px-2 text-(--color-text-dim) hover:text-(--color-text) sm:px-2.5"
               aria-label="Search ticker"
               title="Search ticker (⌘K)"
             >
               <Search size={14} />
-              <kbd className="ml-1 hidden rounded border border-(--color-border) px-1 text-[10px] md:inline">
+              <kbd className="hidden rounded border border-(--color-border) px-1 text-[10px] md:inline">
                 ⌘K
               </kbd>
             </button>
