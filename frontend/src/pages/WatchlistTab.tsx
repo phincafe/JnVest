@@ -9,12 +9,14 @@ type Props = {
    * select it and call onConsumedRequestedSymbol to clear the request. */
   requestedSymbol?: string | null;
   onConsumedRequestedSymbol?: () => void;
+  isGuest?: boolean;
 };
 
 export default function WatchlistTab({
   refreshNonce,
   requestedSymbol,
   onConsumedRequestedSymbol,
+  isGuest = false,
 }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -35,6 +37,7 @@ export default function WatchlistTab({
             refreshNonce={refreshNonce}
             selected={selected}
             onSelect={setSelected}
+            isGuest={isGuest}
           />
         </div>
         <div className={selected ? "block" : "hidden lg:block"}>

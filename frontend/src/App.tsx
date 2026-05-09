@@ -123,6 +123,7 @@ export function App() {
               refreshNonce={refreshNonce}
               requestedSymbol={requestedSymbol}
               onConsumedRequestedSymbol={() => setRequestedSymbol(null)}
+              isGuest={role === "guest"}
             />
           )}
           {active === "portfolio" && (

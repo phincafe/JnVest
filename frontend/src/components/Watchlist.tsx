@@ -36,6 +36,9 @@ type Props = {
   refreshNonce: number;
   selected: string | null;
   onSelect: (symbol: string) => void;
+  /** Guests can browse but can't add/remove (the POST/DELETE endpoints are
+   * owner-gated). Cmd+K still lets them look up any ticker. */
+  isGuest?: boolean;
 };
 
 function relVolBadge(r: number | null): string {
@@ -70,7 +73,7 @@ type SortKey =
 
 const CACHE_KEY = "watchlist:quotes";
 
-export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
+export function Watchlist({ refreshNonce, selected, onSelect, isGuest = false }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [adding, setAdding] = useState("");
   const [busy, setBusy] = useState(false);
@@ -191,6 +194,7 @@ export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
             {streamLabel(streamStatus)}
           </span>
         </div>
+        {!isGuest && (
         <form onSubmit={onAdd} className="relative flex items-center gap-2">
           <input
             value={adding}
@@ -256,6 +260,7 @@ export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
             </ul>
           )}
         </form>
+        )}
       </div>
 
       {err && (
@@ -392,6 +397,7 @@ export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
                           )}
                         </td>
                         <td className="px-3 py-2 text-right">
+                          {!isGuest && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -403,6 +409,7 @@ export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
                           >
                             <Trash2 size={14} />
                           </button>
+                          )}
                         </td>
                       </tr>
                     );
