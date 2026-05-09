@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Search } from "lucide-react";
 import { StockDetail } from "../components/StockDetail";
 import { Watchlist } from "../components/Watchlist";
+import { useTickerSearch } from "../hooks/useTickerSearch";
 
 type Props = {
   refreshNonce: number;
@@ -50,9 +51,85 @@ export default function WatchlistTab({
               <ChevronLeft size={16} /> Watchlist
             </button>
           )}
-          <StockDetail symbol={selected} />
+          {!selected && isGuest ? (
+            <GuestSearchPanel onSelect={setSelected} />
+          ) : (
+            <StockDetail symbol={selected} />
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+function GuestSearchPanel({ onSelect }: { onSelect: (sym: string) => void }) {
+  const [q, setQ] = useState("");
+  const [hi, setHi] = useState(0);
+  const results = useTickerSearch(q);
+
+  const submit = () => {
+    const pick = results[hi]?.symbol ?? q.trim().toUpperCase();
+    if (pick) onSelect(pick.toUpperCase());
+  };
+
+  return (
+    <section className="rounded-xl border border-(--color-border) bg-(--color-panel) p-6">
+      <p className="mb-3 text-sm text-(--color-text-dim)">
+        Search any ticker to see chart, news, and fundamentals.
+      </p>
+      <div className="relative">
+        <div className="flex items-center gap-2 rounded-md border border-(--color-border) bg-(--color-panel) px-3 py-2 focus-within:border-(--color-accent)">
+          <Search size={14} className="text-(--color-text-dim)" />
+          <input
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setHi(0);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                submit();
+              } else if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setHi((h) => Math.min(h + 1, results.length - 1));
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setHi((h) => Math.max(h - 1, 0));
+              }
+            }}
+            autoFocus
+            placeholder="Ticker (e.g. NVDA)"
+            className="flex-1 bg-transparent text-sm uppercase placeholder:normal-case placeholder:text-(--color-text-dim)/60 focus:outline-none"
+          />
+        </div>
+        {q.trim() && results.length > 0 && (
+          <ul
+            className="mt-2 max-h-72 overflow-auto rounded-md border border-(--color-border) bg-(--color-panel-2)"
+            role="listbox"
+          >
+            {results.map((r, i) => (
+              <li key={r.symbol}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(r.symbol)}
+                  onMouseEnter={() => setHi(i)}
+                  className={`flex w-full items-baseline justify-between gap-3 px-3 py-2 text-left text-xs ${
+                    i === hi ? "bg-(--color-panel)" : ""
+                  }`}
+                >
+                  <span className="font-medium">{r.symbol}</span>
+                  {r.description && (
+                    <span className="truncate text-[11px] text-(--color-text-dim)">
+                      {r.description}
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
   );
 }
