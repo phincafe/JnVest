@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
-import { api } from "../api/client";
+import { useTickerSearch } from "../hooks/useTickerSearch";
 
 type Props = {
   open: boolean;
@@ -10,7 +10,6 @@ type Props = {
 };
 
 type Item = { symbol: string; description?: string };
-type SearchResp = { results: Item[]; warning?: string };
 
 // Reasonable mega-cap + popular options names so the palette has suggestions
 // even before you've typed a full ticker. Anything you type is also accepted
@@ -29,45 +28,18 @@ const SUGGESTIONS = [
 export function CommandPalette({ open, onClose, onSelect, watchlistSymbols }: Props) {
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
-  const [apiResults, setApiResults] = useState<Item[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const apiResults = useTickerSearch(query);
 
   useEffect(() => {
     if (open) {
       setQuery("");
       setHighlight(0);
-      setApiResults([]);
       // Defer focus until after the DOM paints.
       const id = requestAnimationFrame(() => inputRef.current?.focus());
       return () => cancelAnimationFrame(id);
     }
   }, [open]);
-
-  // Debounced symbol search — fires 200ms after the user stops typing so we
-  // don't spam Finnhub while they're mid-word. Aborts the in-flight fetch
-  // when the query changes again.
-  useEffect(() => {
-    const q = query.trim();
-    if (!q) {
-      setApiResults([]);
-      return;
-    }
-    const ctrl = new AbortController();
-    const id = window.setTimeout(async () => {
-      try {
-        const data = await api.get<SearchResp>(
-          `/market/search?q=${encodeURIComponent(q)}&limit=10`,
-        );
-        if (!ctrl.signal.aborted) setApiResults(data.results || []);
-      } catch {
-        if (!ctrl.signal.aborted) setApiResults([]);
-      }
-    }, 200);
-    return () => {
-      ctrl.abort();
-      window.clearTimeout(id);
-    };
-  }, [query]);
 
   const list = useMemo(() => {
     const q = query.trim().toUpperCase();

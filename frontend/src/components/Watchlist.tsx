@@ -10,6 +10,7 @@ import { api, ApiError } from "../api/client";
 import type { WatchlistQuotesResponse } from "../api/types";
 import { clearCacheKey, useCachedFetch } from "../hooks/useCachedFetch";
 import { useLiveQuotes, type StreamStatus } from "../hooks/useLiveQuotes";
+import { useTickerSearch } from "../hooks/useTickerSearch";
 import { changeClass, fmtPct, fmtPrice } from "../lib/format";
 import { RangeBar } from "./RangeBar";
 import { Skeleton } from "./Skeleton";
@@ -73,6 +74,9 @@ export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [adding, setAdding] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showSuggest, setShowSuggest] = useState(false);
+  const [suggestHi, setSuggestHi] = useState(0);
+  const suggestions = useTickerSearch(adding);
   const [sortKey, setSortKey] = useState<SortKey>("symbol");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const { quotes: live, status: streamStatus } = useLiveQuotes();
@@ -130,20 +134,32 @@ export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshNonce]);
 
-  const onAdd = async (e: FormEvent) => {
-    e.preventDefault();
-    const sym = adding.trim().toUpperCase();
+  const addSymbol = async (rawSym: string) => {
+    const sym = rawSym.trim().toUpperCase();
     if (!sym) return;
     setBusy(true);
     try {
       await api.post("/watchlist", { symbol: sym });
       setAdding("");
+      setShowSuggest(false);
+      setSuggestHi(0);
       await load();
     } catch (e) {
       setErr(e instanceof ApiError ? e.detail : (e as Error).message);
     } finally {
       setBusy(false);
     }
+  };
+
+  const onAdd = (e: FormEvent) => {
+    e.preventDefault();
+    // Enter on the form: prefer the highlighted suggestion if visible,
+    // else add whatever the user typed verbatim.
+    const pick =
+      showSuggest && suggestions[suggestHi]
+        ? suggestions[suggestHi].symbol
+        : adding;
+    void addSymbol(pick);
   };
 
   const onRemove = async (sym: string) => {
@@ -175,10 +191,31 @@ export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
             {streamLabel(streamStatus)}
           </span>
         </div>
-        <form onSubmit={onAdd} className="flex items-center gap-2">
+        <form onSubmit={onAdd} className="relative flex items-center gap-2">
           <input
             value={adding}
-            onChange={(e) => setAdding(e.target.value)}
+            onChange={(e) => {
+              setAdding(e.target.value);
+              setShowSuggest(true);
+              setSuggestHi(0);
+            }}
+            onFocus={() => setShowSuggest(true)}
+            onBlur={() => {
+              // Delay so a click on a suggestion still fires before close.
+              window.setTimeout(() => setShowSuggest(false), 150);
+            }}
+            onKeyDown={(e) => {
+              if (!showSuggest || suggestions.length === 0) return;
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setSuggestHi((h) => Math.min(h + 1, suggestions.length - 1));
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setSuggestHi((h) => Math.max(h - 1, 0));
+              } else if (e.key === "Escape") {
+                setShowSuggest(false);
+              }
+            }}
             placeholder="Add ticker (e.g. NFLX)"
             className="w-44 rounded-md border border-(--color-border) bg-(--color-panel) px-2 py-1 text-xs uppercase placeholder:text-(--color-text-dim)/60 focus:border-(--color-accent) focus:outline-none"
           />
@@ -189,6 +226,35 @@ export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
           >
             Add
           </button>
+          {showSuggest && adding.trim() && suggestions.length > 0 && (
+            <ul
+              className="absolute left-0 top-full z-30 mt-1 w-72 max-h-64 overflow-auto rounded-md border border-(--color-border) bg-(--color-panel) shadow-xl"
+              role="listbox"
+            >
+              {suggestions.map((s, i) => (
+                <li key={s.symbol}>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      void addSymbol(s.symbol);
+                    }}
+                    onMouseEnter={() => setSuggestHi(i)}
+                    className={`flex w-full items-baseline justify-between gap-3 px-3 py-2 text-left text-xs ${
+                      i === suggestHi ? "bg-(--color-panel-2)" : ""
+                    }`}
+                  >
+                    <span className="font-medium">{s.symbol}</span>
+                    {s.description && (
+                      <span className="truncate text-[10px] text-(--color-text-dim)">
+                        {s.description}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </form>
       </div>
 
