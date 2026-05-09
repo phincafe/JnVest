@@ -29,22 +29,20 @@ type Props = { tiles: IndexTile[] };
 
 export function SectorHeatmap({ tiles }: Props) {
   return (
-    <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
-      <h3 className="mb-3 text-sm font-medium text-(--color-text-dim)">
+    <div className="rounded-lg border border-(--color-border) bg-(--color-panel) p-2.5">
+      <h3 className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-(--color-text-dim)">
         Sectors (SPDR ETFs)
       </h3>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-11">
         {tiles.map((t) => (
           <div
             key={t.symbol}
-            className="rounded-lg p-2 text-sm"
+            className="flex flex-col rounded-md px-1.5 py-1 text-[11px] leading-tight"
             style={{ backgroundColor: bg(t.change_pct) }}
+            title={SECTOR_LABELS[t.symbol] ?? t.symbol}
           >
-            <div className="font-medium">{t.symbol}</div>
-            <div className="text-xs text-white/80">
-              {SECTOR_LABELS[t.symbol] ?? ""}
-            </div>
-            <div className="mt-1 tabular-nums">{fmtPct(t.change_pct)}</div>
+            <span className="font-medium">{t.symbol}</span>
+            <span className="tabular-nums">{fmtPct(t.change_pct)}</span>
           </div>
         ))}
       </div>

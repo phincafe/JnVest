@@ -62,9 +62,9 @@ export function MarketContext({ refreshNonce }: { refreshNonce: number }) {
     return (
       <section>
         <h2 className="mb-3 text-sm font-medium text-(--color-text-dim)">Market context</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
           {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-24" />
+            <Skeleton key={i} className="h-14" />
           ))}
         </div>
       </section>
@@ -90,7 +90,7 @@ export function MarketContext({ refreshNonce }: { refreshNonce: number }) {
           Updated {state.lastUpdated.toLocaleTimeString()}
         </span>
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
         {state.indices.tiles.map((t) => (
           <IndexTile key={t.symbol} tile={t} />
         ))}
