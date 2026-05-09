@@ -8,7 +8,6 @@ type Props = {
   refreshNonce: number;
   onRefresh: () => void;
   onLogout: () => void;
-  onLogin?: () => void;
   onSearch?: () => void;
   role?: "owner" | "guest" | null;
 };
@@ -17,7 +16,6 @@ export function Header({
   refreshNonce,
   onRefresh,
   onLogout,
-  onLogin,
   onSearch,
   role,
 }: Props) {

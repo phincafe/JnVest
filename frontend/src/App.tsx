@@ -108,7 +108,6 @@ export function App() {
         refreshNonce={refreshNonce}
         onRefresh={() => setRefreshNonce((n) => n + 1)}
         onLogout={onLogout}
-        onLogin={onLoginClick}
         onSearch={() => setPaletteOpen(true)}
         role={role}
       />
