@@ -19,6 +19,8 @@ type SliceDetail = {
   /** % of the parent slice (sums to 100 within one underlying's contracts). */
   pct: number;
   value?: number;
+  /** Owner-only: number of contracts (option positions). */
+  qty?: number;
 };
 
 /** Compact $ formatter for legend lines: $12.3K / $1.2M. Falls back to plain
@@ -153,6 +155,7 @@ export function GuestPortfolioView({
         label: `${strike}${typeChar} ${exp}`.trim(),
         pct: total ? (w / total) * 100 : 0,
         value: ownerMode ? o.market_value : undefined,
+        qty: ownerMode ? o.quantity : undefined,
       });
       out.set(k, list);
     }
@@ -230,7 +233,10 @@ export function GuestPortfolioView({
                   <th className="text-right font-normal">Strike</th>
                   <th className="text-left font-normal pl-3">Exp</th>
                   {ownerMode && (
-                    <th className="text-right font-normal">Market value</th>
+                    <>
+                      <th className="text-right font-normal">Qty</th>
+                      <th className="text-right font-normal">Market value</th>
+                    </>
                   )}
                   <th className="text-right font-normal">Weight (portfolio)</th>
                 </tr>
@@ -249,9 +255,14 @@ export function GuestPortfolioView({
                       {o.expiration ?? "—"}
                     </td>
                     {ownerMode && (
-                      <td className="py-1.5 text-right tabular-nums">
-                        ${fmtPrice(o.market_value || 0, 0)}
-                      </td>
+                      <>
+                        <td className="py-1.5 text-right tabular-nums">
+                          {o.quantity}
+                        </td>
+                        <td className="py-1.5 text-right tabular-nums">
+                          ${fmtPrice(o.market_value || 0, 0)}
+                        </td>
+                      </>
                     )}
                     <td className="py-1.5 text-right tabular-nums">
                       {o.allocation_pct != null
@@ -578,7 +589,14 @@ function CategoryCard({
           <ul className="space-y-1 text-xs">
             {activeDetails.map((d, i) => (
               <li key={i} className="flex items-baseline justify-between gap-3">
-                <span className="truncate">{d.label}</span>
+                <span className="flex min-w-0 items-baseline gap-2">
+                  <span className="truncate">{d.label}</span>
+                  {showValues && d.qty != null && (
+                    <span className="shrink-0 text-[10px] tabular-nums text-(--color-text-dim)">
+                      ×{d.qty}
+                    </span>
+                  )}
+                </span>
                 <span className="flex shrink-0 items-baseline gap-2 tabular-nums text-(--color-text-dim)">
                   {showValues && d.value != null && (
                     <span className="text-(--color-text)">{fmtCompactUsd(d.value)}</span>
