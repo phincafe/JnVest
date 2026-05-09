@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
+import { api } from "../api/client";
 
 type Props = {
   open: boolean;
@@ -7,6 +8,9 @@ type Props = {
   onSelect: (symbol: string) => void;
   watchlistSymbols: string[];
 };
+
+type Item = { symbol: string; description?: string };
+type SearchResp = { results: Item[]; warning?: string };
 
 // Reasonable mega-cap + popular options names so the palette has suggestions
 // even before you've typed a full ticker. Anything you type is also accepted
@@ -25,31 +29,77 @@ const SUGGESTIONS = [
 export function CommandPalette({ open, onClose, onSelect, watchlistSymbols }: Props) {
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
+  const [apiResults, setApiResults] = useState<Item[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
       setQuery("");
       setHighlight(0);
+      setApiResults([]);
       // Defer focus until after the DOM paints.
       const id = requestAnimationFrame(() => inputRef.current?.focus());
       return () => cancelAnimationFrame(id);
     }
   }, [open]);
 
+  // Debounced symbol search — fires 200ms after the user stops typing so we
+  // don't spam Finnhub while they're mid-word. Aborts the in-flight fetch
+  // when the query changes again.
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      setApiResults([]);
+      return;
+    }
+    const ctrl = new AbortController();
+    const id = window.setTimeout(async () => {
+      try {
+        const data = await api.get<SearchResp>(
+          `/api/market/search?q=${encodeURIComponent(q)}&limit=10`,
+        );
+        if (!ctrl.signal.aborted) setApiResults(data.results || []);
+      } catch {
+        if (!ctrl.signal.aborted) setApiResults([]);
+      }
+    }, 200);
+    return () => {
+      ctrl.abort();
+      window.clearTimeout(id);
+    };
+  }, [query]);
+
   const list = useMemo(() => {
     const q = query.trim().toUpperCase();
-    const universe = Array.from(new Set([...watchlistSymbols, ...SUGGESTIONS]));
-    if (!q) return universe.slice(0, 12);
-    const exact = universe.filter((s) => s.toUpperCase() === q);
-    const prefix = universe.filter((s) => s.toUpperCase().startsWith(q) && s.toUpperCase() !== q);
-    const contains = universe.filter(
-      (s) => !s.toUpperCase().startsWith(q) && s.toUpperCase().includes(q),
+    const universe: Item[] = Array.from(new Set([...watchlistSymbols, ...SUGGESTIONS])).map(
+      (s) => ({ symbol: s }),
     );
-    const merged = [...exact, ...prefix, ...contains].slice(0, 12);
-    if (merged.length === 0) return [q]; // accept whatever the user typed
+    if (!q) return universe.slice(0, 12);
+
+    // Local matches first (instant) — preserves "in watchlist" badging and
+    // works when Finnhub is unconfigured / down.
+    const exact = universe.filter((u) => u.symbol === q);
+    const prefix = universe.filter((u) => u.symbol.startsWith(q) && u.symbol !== q);
+    const contains = universe.filter(
+      (u) => !u.symbol.startsWith(q) && u.symbol.includes(q),
+    );
+    const local = [...exact, ...prefix, ...contains];
+
+    // Fold in API hits not already in local. API gives us company names too.
+    const localSet = new Set(local.map((u) => u.symbol));
+    const fromApi = apiResults.filter((r) => !localSet.has(r.symbol));
+
+    // Backfill descriptions on local items if the API knows them.
+    const apiByName = new Map(apiResults.map((r) => [r.symbol, r.description]));
+    const localEnriched = local.map((u) => ({
+      ...u,
+      description: apiByName.get(u.symbol),
+    }));
+
+    const merged = [...localEnriched, ...fromApi].slice(0, 12);
+    if (merged.length === 0) return [{ symbol: q }];
     return merged;
-  }, [query, watchlistSymbols]);
+  }, [query, watchlistSymbols, apiResults]);
 
   if (!open) return null;
 
@@ -65,7 +115,7 @@ export function CommandPalette({ open, onClose, onSelect, watchlistSymbols }: Pr
       setHighlight((h) => Math.max(h - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const pick = list[highlight] ?? query.trim().toUpperCase();
+      const pick = list[highlight]?.symbol ?? query.trim().toUpperCase();
       if (pick) {
         onSelect(pick.toUpperCase());
         onClose();
@@ -99,7 +149,8 @@ export function CommandPalette({ open, onClose, onSelect, watchlistSymbols }: Pr
           />
         </div>
         <ul className="max-h-72 overflow-auto py-1">
-          {list.map((sym, i) => {
+          {list.map((item, i) => {
+            const sym = item.symbol;
             const isActive = i === highlight;
             const inWatchlist = watchlistSymbols.includes(sym);
             return (
@@ -110,13 +161,20 @@ export function CommandPalette({ open, onClose, onSelect, watchlistSymbols }: Pr
                     onSelect(sym);
                     onClose();
                   }}
-                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm ${
+                  className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm ${
                     isActive ? "bg-(--color-accent)/15 text-(--color-text)" : "text-(--color-text)"
                   }`}
                 >
-                  <span className="font-medium">{sym}</span>
+                  <span className="flex min-w-0 items-baseline gap-2">
+                    <span className="font-medium">{sym}</span>
+                    {item.description && (
+                      <span className="truncate text-[11px] text-(--color-text-dim)">
+                        {item.description}
+                      </span>
+                    )}
+                  </span>
                   {inWatchlist && (
-                    <span className="text-[10px] uppercase tracking-wide text-(--color-text-dim)">
+                    <span className="shrink-0 text-[10px] uppercase tracking-wide text-(--color-text-dim)">
                       In watchlist
                     </span>
                   )}

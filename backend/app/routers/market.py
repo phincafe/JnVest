@@ -155,6 +155,22 @@ async def movers(limit: int = 5) -> dict[str, Any]:
     return {"gainers": gainers, "losers": losers}
 
 
+@router.get("/search")
+async def search(q: str, limit: int = 10) -> dict[str, Any]:
+    """Symbol search for the cmd+K palette autocomplete. Public (no auth)
+    so guests can look up tickers that aren't in the owner's watchlist."""
+    q = (q or "").strip()
+    if not q:
+        return {"results": []}
+    try:
+        results = await finnhub.search_symbols(q, limit=limit)
+    except RuntimeError as e:
+        return {"results": [], "warning": str(e)}
+    except Exception as e:
+        return {"results": [], "warning": f"Finnhub error: {e}"}
+    return {"results": results}
+
+
 @router.get("/news")
 async def market_news(limit: int = 20) -> dict[str, Any]:
     """General market news headlines from Finnhub."""

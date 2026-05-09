@@ -19,6 +19,46 @@ def _key() -> str:
     return k
 
 
+async def search_symbols(q: str, limit: int = 10) -> list[dict[str, Any]]:
+    """Symbol search for the command palette autocomplete. Cached 1h per query.
+    Returns up to `limit` items shaped {symbol, description, type}."""
+    q = q.strip().upper()
+    if not q:
+        return []
+
+    async def fetch() -> list[dict[str, Any]]:
+        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            r = await client.get(
+                f"{BASE}/search",
+                params={"q": q, "exchange": "US", "token": _key()},
+            )
+            r.raise_for_status()
+            body = r.json() or {}
+            raw = body.get("result") or []
+            out: list[dict[str, Any]] = []
+            seen: set[str] = set()
+            for item in raw:
+                sym = (item.get("symbol") or "").upper()
+                # Skip non-equity quirks: composite tickers like "AAPL.NE",
+                # warrants/preferreds with dots, and dupes from multiple
+                # exchanges (Finnhub returns one row per listing).
+                if not sym or "." in sym or sym in seen:
+                    continue
+                seen.add(sym)
+                out.append(
+                    {
+                        "symbol": sym,
+                        "description": item.get("description") or "",
+                        "type": item.get("type") or "",
+                    }
+                )
+                if len(out) >= limit:
+                    break
+            return out
+
+    return await cache.aget_or_set(f"finnhub-search:{q}:{limit}", fetch, ttl_seconds=3600)
+
+
 async def company_news(symbol: str, days_back: int = 30) -> list[dict[str, Any]]:
     """Recent company news. Finnhub returns full articles; we trim downstream.
     Default 30 days because thinly-covered small/mid-caps may go a week between

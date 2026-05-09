@@ -37,17 +37,6 @@ type Props = {
   onSelect: (symbol: string) => void;
 };
 
-function smaDelta(price: number, ref: number | null): string {
-  if (ref == null) return "—";
-  const d = ((price - ref) / ref) * 100;
-  return `${d >= 0 ? "+" : ""}${d.toFixed(1)}%`;
-}
-
-function smaDeltaClass(price: number, ref: number | null): string {
-  if (ref == null) return "text-(--color-text-dim)";
-  return price >= ref ? "text-(--color-up)" : "text-(--color-down)";
-}
-
 function relVolBadge(r: number | null): string {
   if (r == null) return "—";
   return `${r.toFixed(2)}x`;
@@ -246,15 +235,6 @@ export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
               >
                 Rel Vol
               </SortHeader>
-              <th className="px-3 py-2 text-right" title="Distance to 20-day SMA">
-                vs 20D
-              </th>
-              <th className="px-3 py-2 text-right" title="Distance to 50-day SMA">
-                vs 50D
-              </th>
-              <th className="px-3 py-2 text-right" title="Distance to 200-day SMA">
-                vs 200D
-              </th>
               <SortHeader
                 k="rsi14"
                 align="right"
@@ -275,7 +255,7 @@ export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
             {sortedRows === null
               ? Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    <td colSpan={10} className="px-3 py-2">
+                    <td colSpan={7} className="px-3 py-2">
                       <Skeleton className="h-4 w-full" />
                     </td>
                   </tr>
@@ -284,7 +264,7 @@ export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
                 ? (
                     <tr>
                       <td
-                        colSpan={10}
+                        colSpan={7}
                         className="px-3 py-6 text-center text-sm text-(--color-text-dim)"
                       >
                         Watchlist is empty. Add a ticker above.
@@ -328,21 +308,6 @@ export function Watchlist({ refreshNonce, selected, onSelect }: Props) {
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums">
                           {relVolBadge(r.rel_volume)}
-                        </td>
-                        <td
-                          className={`px-3 py-2 text-right tabular-nums ${smaDeltaClass(r.last, r.sma20)}`}
-                        >
-                          {smaDelta(r.last, r.sma20)}
-                        </td>
-                        <td
-                          className={`px-3 py-2 text-right tabular-nums ${smaDeltaClass(r.last, r.sma50)}`}
-                        >
-                          {smaDelta(r.last, r.sma50)}
-                        </td>
-                        <td
-                          className={`px-3 py-2 text-right tabular-nums ${smaDeltaClass(r.last, r.sma200)}`}
-                        >
-                          {smaDelta(r.last, r.sma200)}
                         </td>
                         <td
                           className={`px-3 py-2 text-right tabular-nums ${rsiB.cls}`}
