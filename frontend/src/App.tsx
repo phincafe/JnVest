@@ -116,7 +116,11 @@ export function App() {
       <ErrorBoundary key={active}>
         <Suspense fallback={<TabSkeleton />}>
           {active === "morning" && (
-            <MorningTab refreshNonce={refreshNonce} isGuest={role === "guest"} />
+            <MorningTab
+              refreshNonce={refreshNonce}
+              isGuest={role === "guest"}
+              onOpenSymbol={onPaletteSelect}
+            />
           )}
           {active === "watchlist" && (
             <WatchlistTab

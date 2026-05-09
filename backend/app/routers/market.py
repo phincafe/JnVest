@@ -3,7 +3,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from ..services import alpaca, finnhub
+from ..services import alpaca, apewisdom, finnhub
 
 router = APIRouter(prefix="/market", tags=["market"])
 
@@ -61,6 +61,97 @@ async def sectors() -> dict[str, Any]:
         raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
     tiles = [_quote_tile(sym, trades.get(sym, {}), bars.get(sym, [])) for sym in SECTOR_SYMBOLS]
     return {"tiles": tiles}
+
+
+# Friendly names for the sector rotation widget — the ETF tickers are
+# meaningless to anyone not glued to ETF.com.
+SECTOR_NAMES = {
+    "XLK": "Technology",
+    "XLF": "Financials",
+    "XLV": "Healthcare",
+    "XLY": "Consumer Discretionary",
+    "XLP": "Consumer Staples",
+    "XLE": "Energy",
+    "XLI": "Industrials",
+    "XLB": "Materials",
+    "XLU": "Utilities",
+    "XLRE": "Real Estate",
+    "XLC": "Communications",
+}
+
+
+def _pct_back(bars: list[dict[str, Any]], last: float, n: int) -> float | None:
+    """% change from the close `n` trading days back to `last`. None if we
+    don't have enough history or the baseline is unusable."""
+    if len(bars) < n + 1 or last <= 0:
+        return None
+    base = float(bars[-(n + 1)].get("c") or 0)
+    if base <= 0:
+        return None
+    return (last - base) / base * 100.0
+
+
+@router.get("/sector-rotation")
+async def sector_rotation() -> dict[str, Any]:
+    """For each sector ETF, % change over 1D / 5D / 1M / 3M. The *spread*
+    between sectors and the change-of-rank between timeframes IS the rotation
+    signal — strong recent vs weak longer-term means money is rotating IN."""
+    try:
+        trades = await alpaca.latest_trades(SECTOR_SYMBOLS)
+        # Need ~75 trading days for 3M lookback (≈63) with buffer.
+        bars = await alpaca.daily_bars(SECTOR_SYMBOLS, days=140)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
+
+    out: list[dict[str, Any]] = []
+    for sym in SECTOR_SYMBOLS:
+        sym_bars = bars.get(sym) or []
+        trade = trades.get(sym, {})
+        last = float(trade.get("p") or 0) or (
+            float(sym_bars[-1].get("c") or 0) if sym_bars else 0.0
+        )
+        prev_close = float(sym_bars[-2]["c"]) if len(sym_bars) >= 2 else (last if last else 0)
+
+        d1 = ((last - prev_close) / prev_close * 100.0) if prev_close > 0 else None
+        d5 = _pct_back(sym_bars, last, 5)
+        m1 = _pct_back(sym_bars, last, 21)
+        m3 = _pct_back(sym_bars, last, 63)
+
+        out.append(
+            {
+                "symbol": sym,
+                "name": SECTOR_NAMES.get(sym, sym),
+                "last": last,
+                "change_1d_pct": d1,
+                "change_5d_pct": d5,
+                "change_1m_pct": m1,
+                "change_3m_pct": m3,
+                # Rotation score: short-term outperformance vs longer-term.
+                # Positive = sector improving (money rotating IN);
+                # negative = sector decelerating (money rotating OUT).
+                "rotation_score": ((m1 - m3) if (m1 is not None and m3 is not None) else None),
+            }
+        )
+
+    # Default order: best rotation score first (money flowing IN). Frontend
+    # can re-sort by any column.
+    out.sort(
+        key=lambda x: x.get("rotation_score") if x.get("rotation_score") is not None else -1e9,
+        reverse=True,
+    )
+    return {"sectors": out}
+
+
+@router.get("/wsb")
+async def wsb(limit: int = 10) -> dict[str, Any]:
+    """Top WallStreetBets tickers by mention count, with 24h delta + rank
+    change + sentiment. Public — no auth needed (Reddit data, scraped via
+    ApeWisdom). Cached server-side 15 min."""
+    try:
+        items = await apewisdom.trending(filter_name="wallstreetbets", limit=limit)
+    except Exception as e:
+        return {"items": [], "warning": f"ApeWisdom error: {e}"}
+    return {"items": items}
 
 
 _MOVERS_UNIVERSE = [

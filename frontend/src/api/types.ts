@@ -365,6 +365,34 @@ export type ManualPosition = {
   pl_pct: number | null;
 };
 
+export type WsbItem = {
+  symbol: string;
+  name: string | null;
+  mentions: number | null;
+  mentions_24h_ago: number | null;
+  rank: number | null;
+  rank_24h_ago: number | null;
+  upvotes: number | null;
+  sentiment: number | null;
+  sentiment_score: number | null;
+};
+
+export type WsbResponse = { items: WsbItem[]; warning?: string };
+
+export type SectorRotationRow = {
+  symbol: string;
+  name: string;
+  last: number;
+  change_1d_pct: number | null;
+  change_5d_pct: number | null;
+  change_1m_pct: number | null;
+  change_3m_pct: number | null;
+  /** 1M − 3M. Positive = sector improving (money rotating IN). */
+  rotation_score: number | null;
+};
+
+export type SectorRotationResponse = { sectors: SectorRotationRow[] };
+
 export type AnalystRecommendation = {
   strong_buy: number;
   buy: number;
