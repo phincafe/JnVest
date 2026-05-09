@@ -56,7 +56,7 @@ export function CommandPalette({ open, onClose, onSelect, watchlistSymbols }: Pr
     const id = window.setTimeout(async () => {
       try {
         const data = await api.get<SearchResp>(
-          `/api/market/search?q=${encodeURIComponent(q)}&limit=10`,
+          `/market/search?q=${encodeURIComponent(q)}&limit=10`,
         );
         if (!ctrl.signal.aborted) setApiResults(data.results || []);
       } catch {
