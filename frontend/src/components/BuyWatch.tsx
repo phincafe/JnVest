@@ -16,12 +16,14 @@ type Props = {
   refreshNonce: number;
   /** Click a row → open the StockDetail. */
   onSelect?: (symbol: string) => void;
+  /** Guests can view but not add/edit/delete (writes are owner-gated). */
+  isGuest?: boolean;
 };
 
 /** Buy Watch: a curated list of names to accumulate on pullbacks.
  * Each row is colored by status: green = in zone, amber = near, gray = far.
- * Owner-only — POST/PUT/DELETE require auth. */
-export function BuyWatch({ refreshNonce, onSelect }: Props) {
+ * Read-only for guests (POST/PUT/DELETE require owner). */
+export function BuyWatch({ refreshNonce, onSelect, isGuest = false }: Props) {
   const { data, isFetching, refetch } = useCachedFetch<BuyWatchResponse>(
     "buy-watch",
     () => api.get("/buy-watch"),
@@ -31,10 +33,25 @@ export function BuyWatch({ refreshNonce, onSelect }: Props) {
 
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<BuyWatchTarget | null>(null);
+  const [seeding, setSeeding] = useState(false);
+  const [seedErr, setSeedErr] = useState<string | null>(null);
 
   const reload = async () => {
     clearCacheKey("buy-watch");
     await refetch();
+  };
+
+  const seedDefaults = async () => {
+    setSeedErr(null);
+    setSeeding(true);
+    try {
+      await api.post("/buy-watch/seed-defaults");
+      await reload();
+    } catch (e) {
+      setSeedErr(e instanceof ApiError ? e.detail : (e as Error).message);
+    } finally {
+      setSeeding(false);
+    }
   };
 
   return (
@@ -47,12 +64,14 @@ export function BuyWatch({ refreshNonce, onSelect }: Props) {
           </span>
         </h2>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setAdding(true)}
-            className="flex items-center gap-1 rounded-md border border-(--color-border) px-2 py-1 text-xs text-(--color-text-dim) hover:text-(--color-text)"
-          >
-            <Plus size={12} /> Add
-          </button>
+          {!isGuest && (
+            <button
+              onClick={() => setAdding(true)}
+              className="flex items-center gap-1 rounded-md border border-(--color-border) px-2 py-1 text-xs text-(--color-text-dim) hover:text-(--color-text)"
+            >
+              <Plus size={12} /> Add
+            </button>
+          )}
           <button
             onClick={refetch}
             disabled={isFetching}
@@ -68,8 +87,35 @@ export function BuyWatch({ refreshNonce, onSelect }: Props) {
       ) : data.targets.length === 0 ? (
         <div className="rounded-xl border border-dashed border-(--color-border) bg-(--color-panel) p-6 text-center text-sm text-(--color-text-dim)">
           <Target size={22} className="mx-auto mb-2 opacity-40" />
-          No buy targets yet. Click <strong>Add</strong> to set price triggers
-          for tickers you want to accumulate on pullbacks.
+          {isGuest ? (
+            <p>The owner hasn't set any buy targets yet.</p>
+          ) : (
+            <>
+              <p className="mb-3">
+                No buy targets yet. Add a ticker manually, or seed the curated
+                AI-cycle list (NVDA / MSFT / META / AVGO / MU / CEG / VRT /
+                TSM / CRWV / OKLO).
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <button
+                  onClick={() => setAdding(true)}
+                  className="rounded-md border border-(--color-border) bg-(--color-panel-2) px-3 py-1.5 text-xs hover:border-(--color-text-dim)"
+                >
+                  Add manually
+                </button>
+                <button
+                  onClick={seedDefaults}
+                  disabled={seeding}
+                  className="rounded-md bg-(--color-accent) px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                >
+                  {seeding ? "Seeding…" : "Use suggested defaults"}
+                </button>
+              </div>
+              {seedErr && (
+                <div className="mt-3 text-xs text-(--color-down)">{seedErr}</div>
+              )}
+            </>
+          )}
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-(--color-border) bg-(--color-panel)">
@@ -91,6 +137,7 @@ export function BuyWatch({ refreshNonce, onSelect }: Props) {
                 <Row
                   key={t.id}
                   target={t}
+                  isGuest={isGuest}
                   onSelect={onSelect}
                   onEdit={() => setEditing(t)}
                   onDelete={async () => {
@@ -131,11 +178,13 @@ export function BuyWatch({ refreshNonce, onSelect }: Props) {
 
 function Row({
   target,
+  isGuest,
   onSelect,
   onEdit,
   onDelete,
 }: {
   target: BuyWatchTarget;
+  isGuest?: boolean;
   onSelect?: (s: string) => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -207,28 +256,30 @@ function Row({
         {target.rsi14 == null ? "—" : target.rsi14.toFixed(0)}
       </td>
       <td className="px-3 py-2 text-right">
-        <div className="inline-flex items-center gap-1">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit();
-            }}
-            className="text-(--color-text-dim) hover:text-(--color-text)"
-            title="Edit"
-          >
-            <Pencil size={12} />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (confirm(`Remove ${target.symbol} from buy watch?`)) onDelete();
-            }}
-            className="text-(--color-text-dim) hover:text-(--color-down)"
-            title="Remove"
-          >
-            <Trash2 size={12} />
-          </button>
-        </div>
+        {!isGuest && (
+          <div className="inline-flex items-center gap-1">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+              className="text-(--color-text-dim) hover:text-(--color-text)"
+              title="Edit"
+            >
+              <Pencil size={12} />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (confirm(`Remove ${target.symbol} from buy watch?`)) onDelete();
+              }}
+              className="text-(--color-text-dim) hover:text-(--color-down)"
+              title="Remove"
+            >
+              <Trash2 size={12} />
+            </button>
+          </div>
+        )}
       </td>
     </tr>
   );

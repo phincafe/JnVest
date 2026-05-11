@@ -219,3 +219,102 @@ def delete_target(
     db.query(BuyTarget).filter(BuyTarget.id == target_id).delete()
     db.commit()
     return {"ok": True}
+
+
+# Curated AI-cycle seed list, spanning all layers of the AI capex stack.
+# Owner can pick "Seed suggested defaults" in the UI to bulk-add these.
+# Tickers already on the watch are skipped (idempotent).
+SEED_DEFAULTS: list[dict[str, Any]] = [
+    {
+        "symbol": "NVDA",
+        "rule": "below_sma",
+        "threshold": 50,
+        "note": "Compute backbone — buy 50DMA dips",
+    },
+    {
+        "symbol": "MSFT",
+        "rule": "off_high",
+        "threshold": 10,
+        "note": "Hyperscaler with real AI revenue",
+    },
+    {
+        "symbol": "META",
+        "rule": "off_high",
+        "threshold": 10,
+        "note": "Massive AI capex + ad-business cash flow",
+    },
+    {
+        "symbol": "AVGO",
+        "rule": "below_sma",
+        "threshold": 50,
+        "note": "Custom ASICs (Google TPU, Meta MTIA) + networking",
+    },
+    {
+        "symbol": "MU",
+        "rule": "off_high",
+        "threshold": 20,
+        "note": "HBM bottleneck — cyclical, deeper dips",
+    },
+    {
+        "symbol": "CEG",
+        "rule": "off_high",
+        "threshold": 15,
+        "note": "Nuclear PPAs to hyperscalers",
+    },
+    {
+        "symbol": "VRT",
+        "rule": "off_high",
+        "threshold": 20,
+        "note": "Liquid cooling for AI racks",
+    },
+    {
+        "symbol": "TSM",
+        "rule": "rsi",
+        "threshold": 35,
+        "note": "Foundry monopoly — mean-revert on oversold RSI",
+    },
+    {
+        "symbol": "CRWV",
+        "rule": "off_high",
+        "threshold": 25,
+        "note": "Pure AI hyperscaler IPO — moonshot",
+    },
+    {
+        "symbol": "OKLO",
+        "rule": "off_high",
+        "threshold": 30,
+        "note": "SMR nuclear pre-revenue — lottery",
+    },
+]
+
+
+@router.post("/seed-defaults")
+def seed_defaults(request: Request, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Bulk-add the curated AI-cycle buy watch (10 names spanning all stack
+    layers). Skips any ticker already on the watch — safe to call repeatedly."""
+    _require_owner(request)
+    existing = {r.symbol.upper() for r in db.query(BuyTarget).all()}
+    next_order = db.query(BuyTarget).order_by(BuyTarget.sort_order.desc()).first()
+    base_order = (next_order.sort_order + 1) if next_order else 0
+
+    added: list[str] = []
+    for i, defn in enumerate(SEED_DEFAULTS):
+        sym = defn["symbol"].upper()
+        if sym in existing:
+            continue
+        db.add(
+            BuyTarget(
+                symbol=sym,
+                rule=defn["rule"],
+                target_price=defn.get("target_price"),
+                threshold=defn.get("threshold"),
+                note=defn.get("note"),
+                sort_order=base_order + i,
+            )
+        )
+        added.append(sym)
+    db.commit()
+    return {
+        "added": added,
+        "skipped_existing": [s["symbol"] for s in SEED_DEFAULTS if s["symbol"] in existing],
+    }

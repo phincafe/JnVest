@@ -25,7 +25,11 @@ export default function MorningTab({
       <MarketContext refreshNonce={refreshNonce} />
       <IndexChart />
       <KeyEvents refreshNonce={refreshNonce} />
-      {!isGuest && <BuyWatch refreshNonce={refreshNonce} onSelect={onOpenSymbol} />}
+      <BuyWatch
+        refreshNonce={refreshNonce}
+        onSelect={onOpenSymbol}
+        isGuest={isGuest}
+      />
       <MarketMovers refreshNonce={refreshNonce} />
       <SectorRotation refreshNonce={refreshNonce} />
       <AiWatch refreshNonce={refreshNonce} onSelect={onOpenSymbol} />
