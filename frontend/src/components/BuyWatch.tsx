@@ -125,7 +125,7 @@ export function BuyWatch({ refreshNonce, onSelect, isGuest = false }: Props) {
                 <th className="px-3 py-2 text-left font-normal">Ticker</th>
                 <th className="px-3 py-2 text-left font-normal">Status</th>
                 <th className="px-3 py-2 text-right font-normal">Last</th>
-                <th className="px-3 py-2 text-right font-normal">Trigger</th>
+                <th className="px-3 py-2 text-right font-normal" title="Trigger price (price/off_high/SMA rules) or score / threshold (smart/RSI rules)">Trigger</th>
                 <th className="px-3 py-2 text-right font-normal">Distance</th>
                 <th className="px-3 py-2 text-right font-normal">Off 52W</th>
                 <th className="px-3 py-2 text-right font-normal">RSI</th>
@@ -192,6 +192,12 @@ function Row({
   const dist = target.distance_pct;
   const distLabel = (() => {
     if (dist == null) return "—";
+    if (target.rule === "smart") {
+      // Smart distance is score points (current_score - threshold).
+      return dist >= 0
+        ? `+${dist.toFixed(0)} pts in zone`
+        : `${dist.toFixed(0)} pts to go`;
+    }
     if (target.rule === "rsi") {
       // RSI distance is in RSI points, not %.
       return dist <= 0 ? `RSI ${Math.abs(dist).toFixed(0)} below` : `+${dist.toFixed(0)} pts`;
@@ -200,6 +206,10 @@ function Row({
       ? `${dist.toFixed(1)}% in zone`
       : `+${dist.toFixed(1)}% to go`;
   })();
+
+  // Tooltip showing what's contributing to the smart score (always available).
+  const c = target.smart_components;
+  const scoreTooltip = `Smart score breakdown:\n• Drawdown: ${c.drawdown}/35\n• 50DMA pullback: ${c.sma50_pullback}/25\n• RSI oversold: ${c.rsi_oversold}/20\n• Trend intact: ${c.trend_intact}/10\n• Confluence: ${c.confluence}/10`;
 
   return (
     <tr
@@ -223,7 +233,23 @@ function Row({
         ${fmtPrice(target.last)}
       </td>
       <td className="px-3 py-2 text-right tabular-nums">
-        {target.rule === "rsi" ? (
+        {target.rule === "smart" ? (
+          <span
+            className="text-(--color-text-dim)"
+            title={scoreTooltip}
+          >
+            <span
+              className={`font-medium ${
+                target.smart_score >= (target.threshold ?? 70)
+                  ? "text-(--color-up)"
+                  : "text-(--color-text)"
+              }`}
+            >
+              {target.smart_score.toFixed(0)}
+            </span>
+            <span className="text-[10px]"> / {target.threshold ?? "—"}</span>
+          </span>
+        ) : target.rule === "rsi" ? (
           <span className="text-(--color-text-dim)">
             RSI ≤ {target.threshold ?? "—"}
           </span>
@@ -286,6 +312,7 @@ function Row({
 }
 
 function ruleLabel(rule: BuyWatchRule, threshold: number | null): string {
+  if (rule === "smart") return `smart score ≥ ${threshold ?? "—"}`;
   if (rule === "price") return "price target";
   if (rule === "off_high") return `${threshold ?? "—"}% off 52w high`;
   if (rule === "below_sma") return `≤ ${threshold ?? "—"}D SMA`;
@@ -343,12 +370,12 @@ function TargetModal({
   onSaved: () => void;
 }) {
   const [symbol, setSymbol] = useState(existing?.symbol ?? "");
-  const [rule, setRule] = useState<BuyWatchRule>(existing?.rule ?? "price");
+  const [rule, setRule] = useState<BuyWatchRule>(existing?.rule ?? "smart");
   const [targetPrice, setTargetPrice] = useState<string>(
     existing?.target_price?.toString() ?? "",
   );
   const [threshold, setThreshold] = useState<string>(
-    existing?.threshold?.toString() ?? defaultThreshold("price"),
+    existing?.threshold?.toString() ?? defaultThreshold(existing?.rule ?? "smart"),
   );
   const [note, setNote] = useState(existing?.note ?? "");
   const [busy, setBusy] = useState(false);
@@ -363,6 +390,7 @@ function TargetModal({
         rule,
         target_price:
           rule === "price" && targetPrice ? parseFloat(targetPrice) : null,
+        // Every non-price rule uses `threshold`; smart needs it too (sensitivity).
         threshold:
           rule !== "price" && threshold ? parseFloat(threshold) : null,
         note: note.trim() || null,
@@ -421,12 +449,30 @@ function TargetModal({
               }}
               className="w-full rounded-md border border-(--color-border) bg-(--color-panel-2) px-2 py-1.5 text-sm"
             >
+              <option value="smart">Smart — multi-factor auto (recommended)</option>
               <option value="price">Price target — buy when ≤ $X</option>
               <option value="off_high">% off 52w high</option>
               <option value="below_sma">Below moving average</option>
               <option value="rsi">RSI oversold</option>
             </select>
           </Field>
+          {rule === "smart" && (
+            <Field label="Sensitivity threshold (60-80; lower = earlier buys)">
+              <select
+                value={threshold}
+                onChange={(e) => setThreshold(e.target.value)}
+                className="w-full rounded-md border border-(--color-border) bg-(--color-panel-2) px-2 py-1.5 text-sm"
+              >
+                <option value="80">80 — Conservative (deep dip + multiple signals)</option>
+                <option value="70">70 — Balanced (recommended)</option>
+                <option value="60">60 — Aggressive (volatile names, early entry)</option>
+              </select>
+              <p className="mt-1 text-[10px] text-(--color-text-dim)">
+                Combines drawdown (35), 50DMA pullback (25), RSI (20), trend
+                intact (10), confluence bonus (10). Total 0-100.
+              </p>
+            </Field>
+          )}
           {rule === "price" && (
             <Field label="Target price ($)">
               <input
@@ -511,6 +557,7 @@ function TargetModal({
 }
 
 function defaultThreshold(rule: BuyWatchRule): string {
+  if (rule === "smart") return "70";
   if (rule === "off_high") return "15";
   if (rule === "below_sma") return "50";
   if (rule === "rsi") return "35";

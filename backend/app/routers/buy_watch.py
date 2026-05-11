@@ -20,7 +20,7 @@ from ..services.indicators import rsi
 
 router = APIRouter(prefix="/buy-watch", tags=["buy-watch"])
 
-VALID_RULES = {"price", "off_high", "below_sma", "rsi"}
+VALID_RULES = {"price", "off_high", "below_sma", "rsi", "smart"}
 
 
 class BuyTargetIn(BaseModel):
@@ -61,11 +61,99 @@ def _trigger_price(
     return None
 
 
+def _smart_score(
+    last: float,
+    high_52w: float | None,
+    sma50: float | None,
+    sma200: float | None,
+    rsi_val: float | None,
+) -> tuple[float, dict[str, float]]:
+    """Multi-factor buy score, 0-100. Higher = more bullish entry signal.
+    Returns (total, components) for UI breakdown.
+
+    The factors:
+      - Drawdown from 52w high (35 pts max) — bigger pullback = better entry
+      - Pullback to 50DMA (25 pts max)      — classic buy-the-dip support
+      - RSI oversold (20 pts max)           — mean-reversion signal
+      - Trend intact above 200DMA (10 pts)  — don't bottom-fish downtrends
+      - Confluence bonus (10 pts)           — multiple signals aligned
+    """
+    components: dict[str, float] = {
+        "drawdown": 0,
+        "sma50_pullback": 0,
+        "rsi_oversold": 0,
+        "trend_intact": 0,
+        "confluence": 0,
+    }
+    if last <= 0:
+        return (0.0, components)
+
+    # 1. Drawdown from 52w high (max 35 pts; 23%+ off high = full points)
+    off_high_pct = 0.0
+    if high_52w and high_52w > 0:
+        off_high_pct = max(0.0, (high_52w - last) / high_52w * 100.0)
+        components["drawdown"] = min(35.0, off_high_pct * 1.5)
+
+    # 2. Pullback to 50DMA (max 25 pts)
+    if sma50 and sma50 > 0:
+        if last <= sma50:
+            pct_below = (sma50 - last) / sma50 * 100.0
+            components["sma50_pullback"] = min(25.0, 15.0 + pct_below * 2.0)
+        elif last <= sma50 * 1.05:
+            components["sma50_pullback"] = 10.0
+
+    # 3. RSI oversold (max 20 pts)
+    if rsi_val is not None:
+        if rsi_val <= 30:
+            components["rsi_oversold"] = 20.0
+        elif rsi_val <= 40:
+            components["rsi_oversold"] = 15.0
+        elif rsi_val <= 50:
+            components["rsi_oversold"] = 8.0
+
+    # 4. Trend intact (max 10 pts; reward staying above the 200DMA)
+    if sma200 and sma200 > 0 and last >= sma200:
+        components["trend_intact"] = 10.0
+
+    # 5. Confluence — bonus when multiple signals agree (max 10 pts)
+    signals_active = sum(
+        [
+            off_high_pct >= 10,
+            bool(sma50 and last <= sma50 * 1.02),
+            bool(rsi_val is not None and rsi_val <= 40),
+        ]
+    )
+    if signals_active >= 2:
+        components["confluence"] = 10.0
+    elif signals_active >= 1:
+        components["confluence"] = 5.0
+
+    total = sum(components.values())
+    return (total, components)
+
+
 def _compute_status(
-    last: float, trigger: float | None, rule: str, rsi_val: float | None, threshold: float | None
+    last: float,
+    trigger: float | None,
+    rule: str,
+    rsi_val: float | None,
+    threshold: float | None,
+    smart_score: float | None = None,
 ) -> tuple[str, float | None]:
     """Returns (status, distance_pct). Distance is signed: positive means
     price is ABOVE the trigger (still need to wait), negative means in zone."""
+    if rule == "smart":
+        # Smart rule: status based on composite score vs threshold.
+        # `distance` here is (score - threshold) — positive = past trigger
+        # (in zone), negative = below.
+        if smart_score is None or threshold is None:
+            return ("unknown", None)
+        diff = smart_score - threshold
+        if diff >= 0:
+            return ("in_zone", diff)
+        if diff >= -10:
+            return ("near", diff)
+        return ("far", diff)
     if rule == "rsi":
         # RSI rule: "in zone" when current RSI <= threshold (oversold).
         if rsi_val is None or threshold is None:
@@ -123,7 +211,10 @@ async def list_targets(db: Session = Depends(get_db)) -> dict[str, Any]:
         trigger = _trigger_price(
             r.rule, r.target_price, r.threshold, high_52w, sma20, sma50, sma200
         )
-        status, distance = _compute_status(last, trigger, r.rule, rsi_val, r.threshold)
+        smart_score, smart_components = _smart_score(last, high_52w, sma50, sma200, rsi_val)
+        status, distance = _compute_status(
+            last, trigger, r.rule, rsi_val, r.threshold, smart_score=smart_score
+        )
         off_high_pct = ((last - high_52w) / high_52w * 100.0) if (high_52w and last) else None
 
         out.append(
@@ -146,6 +237,10 @@ async def list_targets(db: Session = Depends(get_db)) -> dict[str, Any]:
                 "trigger_price": trigger,
                 "distance_pct": distance,
                 "status": status,
+                # Always compute the smart score so the UI can show it as
+                # context even when the user picked a non-smart rule.
+                "smart_score": round(smart_score, 1),
+                "smart_components": {k: round(v, 1) for k, v in smart_components.items()},
             }
         )
 
@@ -224,67 +319,21 @@ def delete_target(
 # Curated AI-cycle seed list, spanning all layers of the AI capex stack.
 # Owner can pick "Seed suggested defaults" in the UI to bulk-add these.
 # Tickers already on the watch are skipped (idempotent).
+# Smart-rule thresholds:
+#   80 = very conservative (multiple strong signals required)
+#   70 = balanced (default)
+#   60 = aggressive (early entry on volatile names where pullbacks come fast)
 SEED_DEFAULTS: list[dict[str, Any]] = [
-    {
-        "symbol": "NVDA",
-        "rule": "below_sma",
-        "threshold": 50,
-        "note": "Compute backbone — buy 50DMA dips",
-    },
-    {
-        "symbol": "MSFT",
-        "rule": "off_high",
-        "threshold": 10,
-        "note": "Hyperscaler with real AI revenue",
-    },
-    {
-        "symbol": "META",
-        "rule": "off_high",
-        "threshold": 10,
-        "note": "Massive AI capex + ad-business cash flow",
-    },
-    {
-        "symbol": "AVGO",
-        "rule": "below_sma",
-        "threshold": 50,
-        "note": "Custom ASICs (Google TPU, Meta MTIA) + networking",
-    },
-    {
-        "symbol": "MU",
-        "rule": "off_high",
-        "threshold": 20,
-        "note": "HBM bottleneck — cyclical, deeper dips",
-    },
-    {
-        "symbol": "CEG",
-        "rule": "off_high",
-        "threshold": 15,
-        "note": "Nuclear PPAs to hyperscalers",
-    },
-    {
-        "symbol": "VRT",
-        "rule": "off_high",
-        "threshold": 20,
-        "note": "Liquid cooling for AI racks",
-    },
-    {
-        "symbol": "TSM",
-        "rule": "rsi",
-        "threshold": 35,
-        "note": "Foundry monopoly — mean-revert on oversold RSI",
-    },
-    {
-        "symbol": "CRWV",
-        "rule": "off_high",
-        "threshold": 25,
-        "note": "Pure AI hyperscaler IPO — moonshot",
-    },
-    {
-        "symbol": "OKLO",
-        "rule": "off_high",
-        "threshold": 30,
-        "note": "SMR nuclear pre-revenue — lottery",
-    },
+    {"symbol": "NVDA", "rule": "smart", "threshold": 70, "note": "Compute backbone — AI #1"},
+    {"symbol": "MSFT", "rule": "smart", "threshold": 70, "note": "Hyperscaler, real AI revenue"},
+    {"symbol": "META", "rule": "smart", "threshold": 70, "note": "AI capex + ad cash flow"},
+    {"symbol": "AVGO", "rule": "smart", "threshold": 70, "note": "Custom ASICs + networking"},
+    {"symbol": "MU", "rule": "smart", "threshold": 65, "note": "HBM memory — more cyclical"},
+    {"symbol": "CEG", "rule": "smart", "threshold": 70, "note": "Nuclear PPAs to hyperscalers"},
+    {"symbol": "VRT", "rule": "smart", "threshold": 70, "note": "Liquid cooling for AI racks"},
+    {"symbol": "TSM", "rule": "smart", "threshold": 70, "note": "Foundry monopoly"},
+    {"symbol": "CRWV", "rule": "smart", "threshold": 60, "note": "Pure-play AI IPO — moonshot"},
+    {"symbol": "OKLO", "rule": "smart", "threshold": 60, "note": "SMR nuclear lottery"},
 ]
 
 

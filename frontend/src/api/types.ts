@@ -413,8 +413,16 @@ export type AiWatchGroup = {
 
 export type AiWatchResponse = { groups: AiWatchGroup[] };
 
-export type BuyWatchRule = "price" | "off_high" | "below_sma" | "rsi";
+export type BuyWatchRule = "smart" | "price" | "off_high" | "below_sma" | "rsi";
 export type BuyWatchStatus = "in_zone" | "near" | "far" | "unknown";
+
+export type SmartScoreComponents = {
+  drawdown: number;
+  sma50_pullback: number;
+  rsi_oversold: number;
+  trend_intact: number;
+  confluence: number;
+};
 
 export type BuyWatchTarget = {
   id: number;
@@ -434,9 +442,14 @@ export type BuyWatchTarget = {
   sma200: number | null;
   rsi14: number | null;
   trigger_price: number | null;
-  /** Signed: positive = price ABOVE trigger (waiting); negative/zero = in zone. */
+  /** Signed: for price/off_high/below_sma rules positive = above trigger
+   * (waiting), negative/zero = in zone. For RSI/smart, units differ
+   * (RSI points / score points). */
   distance_pct: number | null;
   status: BuyWatchStatus;
+  /** 0-100 composite buy-signal score (always computed, even when rule isn't smart). */
+  smart_score: number;
+  smart_components: SmartScoreComponents;
 };
 
 export type BuyWatchResponse = { targets: BuyWatchTarget[] };
