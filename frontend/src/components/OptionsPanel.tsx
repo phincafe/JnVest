@@ -33,6 +33,9 @@ export function OptionsPanel({ symbol }: Props) {
   const [exp, setExp] = useState<string | null>(null);
   const [chain, setChain] = useState<ChainResponse | null>(null);
   const [side, setSide] = useState<Side>("both");
+  // Liquidity filter: hide strikes nobody actually trades. ON by default
+  // because 90% of any chain is noise (no OI, no quote, dollar-wide spreads).
+  const [liquidOnly, setLiquidOnly] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   // Load IV summary + expirations in parallel.
@@ -140,6 +143,18 @@ export function OptionsPanel({ symbol }: Props) {
             ))}
           </div>
 
+          <button
+            onClick={() => setLiquidOnly((v) => !v)}
+            title="Show only liquid strikes: OI ≥ 100, real bid/ask, spread ≤ 25%, near the money"
+            className={`rounded-md border px-2 py-1 text-xs ${
+              liquidOnly
+                ? "border-(--color-accent)/50 bg-(--color-accent)/15 text-(--color-accent)"
+                : "border-(--color-border) text-(--color-text-dim) hover:text-(--color-text)"
+            }`}
+          >
+            Liquid only
+          </button>
+
           {chain && (
             <div className="ml-auto text-xs text-(--color-text-dim) tabular-nums">
               Spot ${chain.spot.toFixed(2)} · {Math.round(chain.days_to_exp)}d to exp
@@ -147,7 +162,12 @@ export function OptionsPanel({ symbol }: Props) {
           )}
         </div>
 
-        <ChainTable chain={chain} side={side} spot={chain?.spot ?? 0} />
+        <ChainTable
+          chain={chain}
+          side={side}
+          spot={chain?.spot ?? 0}
+          liquidOnly={liquidOnly}
+        />
       </div>
     </section>
   );
@@ -280,21 +300,49 @@ function SkewCard({ iv }: { iv: IvSummary | null }) {
   );
 }
 
+/** A row passes the liquidity filter when:
+ *   - bid AND ask both > 0 (someone's actually quoting)
+ *   - open interest ≥ 100 (real positions outstanding)
+ *   - spread % ≤ 25 (not bleeding ¢ on every fill)
+ *   - strike within ±30% of spot (deep OTM/ITM are usually noise)
+ * Tweaked toward "what an active trader would actually consider," not
+ * exhaustive — turn the toggle off for full chain. */
+function isLiquidRow(row: OptionRow | null, spot: number): boolean {
+  if (!row) return false;
+  if (!(row.bid > 0 && row.ask > 0)) return false;
+  if ((row.open_interest ?? 0) < 100) return false;
+  if ((row.spread_pct ?? 100) > 25) return false;
+  if (spot > 0 && Math.abs(row.strike - spot) / spot > 0.3) return false;
+  return true;
+}
+
 function ChainTable({
   chain,
   side,
   spot,
+  liquidOnly,
 }: {
   chain: ChainResponse | null;
   side: Side;
   spot: number;
+  liquidOnly: boolean;
 }) {
-  const merged = useMemo(() => {
-    if (!chain) return null;
-    if (side === "calls")
-      return chain.calls.map((c) => ({ strike: c.strike, call: c, put: null }));
-    if (side === "puts")
-      return chain.puts.map((p) => ({ strike: p.strike, call: null, put: p }));
+  const { merged, totalStrikes } = useMemo(() => {
+    if (!chain) return { merged: null, totalStrikes: 0 };
+    if (side === "calls") {
+      const all = chain.calls.map((c) => ({ strike: c.strike, call: c, put: null }));
+      return {
+        merged: liquidOnly ? all.filter((r) => isLiquidRow(r.call, spot)) : all,
+        totalStrikes: all.length,
+      };
+    }
+    if (side === "puts") {
+      const all = chain.puts.map((p) => ({ strike: p.strike, call: null, put: p }));
+      return {
+        merged: liquidOnly ? all.filter((r) => isLiquidRow(r.put, spot)) : all,
+        totalStrikes: all.length,
+      };
+    }
     const byStrike = new Map<
       number,
       { strike: number; call: OptionRow | null; put: OptionRow | null }
@@ -305,22 +353,44 @@ function ChainTable({
       if (r) r.put = p;
       else byStrike.set(p.strike, { strike: p.strike, call: null, put: p });
     }
-    return Array.from(byStrike.values()).sort((a, b) => a.strike - b.strike);
-  }, [chain, side]);
+    const all = Array.from(byStrike.values()).sort((a, b) => a.strike - b.strike);
+    // For "both" view, keep the strike if EITHER side is liquid — losing a
+    // strike entirely just because one leg is dead would be misleading.
+    return {
+      merged: liquidOnly
+        ? all.filter((r) => isLiquidRow(r.call, spot) || isLiquidRow(r.put, spot))
+        : all,
+      totalStrikes: all.length,
+    };
+  }, [chain, side, liquidOnly, spot]);
 
   if (!chain || !merged) {
     return <Skeleton className="h-64 w-full" />;
   }
   if (merged.length === 0) {
-    return <div className="py-6 text-center text-sm text-(--color-text-dim)">No contracts.</div>;
+    return (
+      <div className="py-6 text-center text-sm text-(--color-text-dim)">
+        {liquidOnly && totalStrikes > 0
+          ? `No liquid strikes (${totalStrikes} total — turn off "Liquid only" to see them).`
+          : "No contracts."}
+      </div>
+    );
   }
 
   // Robinhood-style: when "both", show only the most useful columns per side
   // (Bid / Ask / Last / Vol / IV / Delta), ITM-shaded background, ATM ring.
   const compact = side === "both";
+  const countLine =
+    liquidOnly && merged.length < totalStrikes
+      ? `Showing ${merged.length} liquid of ${totalStrikes} strikes`
+      : null;
 
   return (
-    <div className="max-h-[28rem] overflow-auto rounded-lg border border-(--color-border)">
+    <div className="space-y-2">
+      {countLine && (
+        <div className="text-[11px] text-(--color-text-dim)">{countLine}</div>
+      )}
+      <div className="max-h-[28rem] overflow-auto rounded-lg border border-(--color-border)">
       <table className="min-w-full text-xs">
         <thead className="sticky top-0 z-10 bg-(--color-panel-2) text-[10px] uppercase tracking-wide text-(--color-text-dim)">
           <tr>
@@ -367,6 +437,7 @@ function ChainTable({
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
