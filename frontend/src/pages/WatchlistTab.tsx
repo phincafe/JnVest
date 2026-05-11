@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, Search } from "lucide-react";
+import { AiWatch } from "../components/AiWatch";
+import { BuyWatch } from "../components/BuyWatch";
 import { StockDetail } from "../components/StockDetail";
 import { Watchlist } from "../components/Watchlist";
+import { WsbPulse } from "../components/WsbPulse";
 import { useTickerSearch } from "../hooks/useTickerSearch";
 
 type Props = {
@@ -29,7 +32,15 @@ export default function WatchlistTab({
   }, [requestedSymbol, onConsumedRequestedSymbol]);
 
   return (
-    <div className="mx-auto max-w-[100rem] px-2 py-4 sm:px-4">
+    <div className="mx-auto max-w-[100rem] space-y-6 px-2 py-4 sm:px-4">
+      <BuyWatch
+        refreshNonce={refreshNonce}
+        onSelect={setSelected}
+        isGuest={isGuest}
+      />
+      <AiWatch refreshNonce={refreshNonce} onSelect={setSelected} />
+      <WsbPulse refreshNonce={refreshNonce} onSelect={setSelected} />
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
         <div
           className={`${selected ? "hidden lg:block" : "block"} lg:sticky lg:top-[68px] lg:self-start`}
