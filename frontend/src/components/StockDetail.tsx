@@ -124,6 +124,17 @@ function LegendDot({ color }: { color: string }) {
   );
 }
 
+/** Finnhub returns marketCapitalization in millions of USD. Format compactly:
+ *   750     → "$750M"
+ *   3500    → "$3.50B"
+ *   3500000 → "$3.50T" */
+function fmtMarketCap(mcapMillions: number | null | undefined): string {
+  if (mcapMillions == null || mcapMillions <= 0) return "—";
+  if (mcapMillions >= 1_000_000) return `$${(mcapMillions / 1_000_000).toFixed(2)}T`;
+  if (mcapMillions >= 1_000) return `$${(mcapMillions / 1_000).toFixed(2)}B`;
+  return `$${mcapMillions.toFixed(0)}M`;
+}
+
 function FundamentalsCard({ fund }: { fund: StockFundamentals | null }) {
   const hasAnalystData =
     !!fund &&
@@ -145,6 +156,7 @@ function FundamentalsCard({ fund }: { fund: StockFundamentals | null }) {
           <dl className="grid grid-cols-2 gap-y-2 text-sm">
             <Row label="Next earnings" value={fund.next_earnings ?? "—"} />
             <Row label="Ex-dividend" value={fund.ex_dividend ?? "—"} />
+            <Row label="Market cap" value={fmtMarketCap(fund.market_cap)} />
             <Row
               label="Analyst target avg"
               value={
