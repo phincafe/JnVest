@@ -1,3 +1,4 @@
+import { AiWatch } from "../components/AiWatch";
 import { Calendar } from "../components/Calendar";
 import { IndexChart } from "../components/IndexChart";
 import { KeyEvents } from "../components/KeyEvents";
@@ -25,6 +26,7 @@ export default function MorningTab({
       <KeyEvents refreshNonce={refreshNonce} />
       <MarketMovers refreshNonce={refreshNonce} />
       <SectorRotation refreshNonce={refreshNonce} />
+      <AiWatch refreshNonce={refreshNonce} onSelect={onOpenSymbol} />
       <WsbPulse refreshNonce={refreshNonce} onSelect={onOpenSymbol} />
       <Calendar refreshNonce={refreshNonce} />
       <MarketNews refreshNonce={refreshNonce} />

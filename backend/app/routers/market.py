@@ -142,6 +142,80 @@ async def sector_rotation() -> dict[str, Any]:
     return {"sectors": out}
 
 
+# Curated AI-theme watchlist, grouped by layer of the AI capex stack.
+# Lives server-side so the universe is consistent across users and easy to
+# tune as the thesis evolves. Tickers are deliberately limited to liquid US
+# equities Alpaca's IEX feed quotes well.
+AI_WATCH_GROUPS: dict[str, list[str]] = {
+    "Compute": ["NVDA", "AMD", "AVGO"],
+    "Memory": ["MU", "SNDK", "WDC"],
+    "Power & Cooling": ["VRT", "CEG", "VST", "ETN", "GEV"],
+    "Networking / Optical": ["ANET", "COHR", "CRDO"],
+    "Data Center REITs": ["EQIX", "DLR"],
+    "Hyperscalers": ["MSFT", "META", "GOOGL", "AMZN", "ORCL"],
+    "AI Software": ["PLTR", "NOW", "MDB", "SNOW"],
+    "Foundry / Equipment": ["TSM", "ASML", "AMAT", "ARM"],
+}
+
+
+def _ai_row(
+    sym: str, trades: dict[str, Any], bars: dict[str, list[dict[str, Any]]]
+) -> dict[str, Any]:
+    sym_bars = bars.get(sym) or []
+    trade = trades.get(sym, {})
+    last = float(trade.get("p") or 0) or (float(sym_bars[-1].get("c") or 0) if sym_bars else 0.0)
+    prev_close = float(sym_bars[-2]["c"]) if len(sym_bars) >= 2 else (last if last else 0)
+    d1 = ((last - prev_close) / prev_close * 100.0) if prev_close > 0 else None
+    return {
+        "symbol": sym,
+        "last": last,
+        "change_1d_pct": d1,
+        "change_5d_pct": _pct_back(sym_bars, last, 5),
+        "change_1m_pct": _pct_back(sym_bars, last, 21),
+        "change_3m_pct": _pct_back(sym_bars, last, 63),
+    }
+
+
+def _avg(rows: list[dict[str, Any]], key: str) -> float | None:
+    vals = [r[key] for r in rows if r.get(key) is not None]
+    return sum(vals) / len(vals) if vals else None
+
+
+@router.get("/ai-watch")
+async def ai_watch() -> dict[str, Any]:
+    """Curated AI-theme tickers grouped by stack layer (Compute / Memory /
+    Power / Networking / Data Centers / Hyperscalers / Software / Foundry).
+    Each ticker reports 1D / 5D / 1M / 3M %; each group reports its avg
+    so you can see which layer is moving."""
+    all_syms = sorted({s for syms in AI_WATCH_GROUPS.values() for s in syms})
+    try:
+        trades = await alpaca.latest_trades(all_syms)
+        # 140d ≈ enough history for a 3M (≈63 trading day) lookback with buffer.
+        bars = await alpaca.daily_bars(all_syms, days=140)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
+
+    groups: list[dict[str, Any]] = []
+    for name, syms in AI_WATCH_GROUPS.items():
+        rows = [_ai_row(s, trades, bars) for s in syms]
+        groups.append(
+            {
+                "name": name,
+                "avg_1d_pct": _avg(rows, "change_1d_pct"),
+                "avg_1m_pct": _avg(rows, "change_1m_pct"),
+                "avg_3m_pct": _avg(rows, "change_3m_pct"),
+                "rotation_score": (
+                    (_avg(rows, "change_1m_pct") or 0) - (_avg(rows, "change_3m_pct") or 0)
+                    if _avg(rows, "change_1m_pct") is not None
+                    and _avg(rows, "change_3m_pct") is not None
+                    else None
+                ),
+                "rows": rows,
+            }
+        )
+    return {"groups": groups}
+
+
 @router.get("/wsb")
 async def wsb(limit: int = 10) -> dict[str, Any]:
     """Top WallStreetBets tickers by mention count, with 24h delta + rank

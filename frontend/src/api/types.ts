@@ -393,6 +393,26 @@ export type SectorRotationRow = {
 
 export type SectorRotationResponse = { sectors: SectorRotationRow[] };
 
+export type AiWatchRow = {
+  symbol: string;
+  last: number;
+  change_1d_pct: number | null;
+  change_5d_pct: number | null;
+  change_1m_pct: number | null;
+  change_3m_pct: number | null;
+};
+
+export type AiWatchGroup = {
+  name: string;
+  avg_1d_pct: number | null;
+  avg_1m_pct: number | null;
+  avg_3m_pct: number | null;
+  rotation_score: number | null;
+  rows: AiWatchRow[];
+};
+
+export type AiWatchResponse = { groups: AiWatchGroup[] };
+
 export type AnalystRecommendation = {
   strong_buy: number;
   buy: number;
