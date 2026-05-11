@@ -16,6 +16,9 @@ RANGE_MAP: dict[str, tuple[str, int]] = {
     "1M": ("1Hour", 30),
     "6M": ("1Day", 200),
     "1Y": ("1Day", 365),
+    # Alpaca's IEX daily history goes back ~5+ years for most names; ask for
+    # 15y so we get everything available without paging.
+    "ALL": ("1Day", 365 * 15),
 }
 
 

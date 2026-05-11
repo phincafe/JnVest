@@ -12,7 +12,7 @@ import { InsiderPanel } from "./InsiderPanel";
 import { OptionsPanel } from "./OptionsPanel";
 import { Skeleton } from "./Skeleton";
 
-const RANGES = ["1D", "5D", "1M", "6M", "1Y"] as const;
+const RANGES = ["1D", "5D", "1M", "6M", "1Y", "ALL"] as const;
 type Range = (typeof RANGES)[number];
 
 type Props = { symbol: string | null };
