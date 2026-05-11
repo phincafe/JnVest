@@ -32,41 +32,49 @@ export default function WatchlistTab({
   }, [requestedSymbol, onConsumedRequestedSymbol]);
 
   return (
-    <div className="mx-auto max-w-[100rem] space-y-6 px-2 py-4 sm:px-4">
-      <BuyWatch
-        refreshNonce={refreshNonce}
-        onSelect={setSelected}
-        isGuest={isGuest}
-      />
-      <AiWatch refreshNonce={refreshNonce} onSelect={setSelected} />
-      <WsbPulse refreshNonce={refreshNonce} onSelect={setSelected} />
-
+    <div className="mx-auto max-w-[100rem] px-2 py-4 sm:px-4">
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        <div
-          className={`${selected ? "hidden lg:block" : "block"} lg:sticky lg:top-[68px] lg:self-start`}
-        >
+        {/* LEFT column — your watchlist + the discovery widgets, stacked.
+            Personal watchlist stays on top per request; everything else flows
+            below it. Hidden on mobile when a symbol is selected so the
+            detail panel takes over the screen. */}
+        <div className={`${selected ? "hidden lg:block" : "block"} space-y-6`}>
           <Watchlist
             refreshNonce={refreshNonce}
             selected={selected}
             onSelect={setSelected}
             isGuest={isGuest}
           />
+          <BuyWatch
+            refreshNonce={refreshNonce}
+            onSelect={setSelected}
+            isGuest={isGuest}
+          />
+          <AiWatch refreshNonce={refreshNonce} onSelect={setSelected} />
+          <WsbPulse refreshNonce={refreshNonce} onSelect={setSelected} />
         </div>
+
+        {/* RIGHT column — sticky StockDetail. Stays in view as the user
+            scrolls through the four lists on the left, so picking a ticker
+            anywhere shows the chart/news/fundamentals without losing
+            scroll position. */}
         <div className={selected ? "block" : "hidden lg:block"}>
-          {selected && (
-            <button
-              onClick={() => setSelected(null)}
-              className="mb-3 -ml-1 flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-(--color-text-dim) hover:text-(--color-text) lg:hidden"
-              aria-label="Back to watchlist"
-            >
-              <ChevronLeft size={16} /> Watchlist
-            </button>
-          )}
-          {!selected && isGuest ? (
-            <GuestSearchPanel onSelect={setSelected} />
-          ) : (
-            <StockDetail symbol={selected} />
-          )}
+          <div className="lg:sticky lg:top-[68px]">
+            {selected && (
+              <button
+                onClick={() => setSelected(null)}
+                className="mb-3 -ml-1 flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-(--color-text-dim) hover:text-(--color-text) lg:hidden"
+                aria-label="Back to lists"
+              >
+                <ChevronLeft size={16} /> Lists
+              </button>
+            )}
+            {!selected && isGuest ? (
+              <GuestSearchPanel onSelect={setSelected} />
+            ) : (
+              <StockDetail symbol={selected} />
+            )}
+          </div>
         </div>
       </div>
     </div>

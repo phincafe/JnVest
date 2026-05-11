@@ -65,12 +65,22 @@ export function BuyWatch({ refreshNonce, onSelect, isGuest = false }: Props) {
         </h2>
         <div className="flex items-center gap-2">
           {!isGuest && (
-            <button
-              onClick={() => setAdding(true)}
-              className="flex items-center gap-1 rounded-md border border-(--color-border) px-2 py-1 text-xs text-(--color-text-dim) hover:text-(--color-text)"
-            >
-              <Plus size={12} /> Add
-            </button>
+            <>
+              <button
+                onClick={() => setAdding(true)}
+                className="flex items-center gap-1 rounded-md border border-(--color-border) px-2 py-1 text-xs text-(--color-text-dim) hover:text-(--color-text)"
+              >
+                <Plus size={12} /> Add
+              </button>
+              <button
+                onClick={seedDefaults}
+                disabled={seeding}
+                title="Bulk-add the curated AI-cycle list (idempotent — skips anything already added)"
+                className="flex items-center gap-1 rounded-md border border-(--color-accent)/40 bg-(--color-accent)/10 px-2 py-1 text-xs text-(--color-accent) hover:bg-(--color-accent)/20 disabled:opacity-50"
+              >
+                <Target size={12} /> {seeding ? "Seeding…" : "+ Defaults"}
+              </button>
+            </>
           )}
           <button
             onClick={refetch}
@@ -81,6 +91,12 @@ export function BuyWatch({ refreshNonce, onSelect, isGuest = false }: Props) {
           </button>
         </div>
       </div>
+
+      {seedErr && (
+        <div className="rounded-md border border-(--color-down)/40 bg-(--color-down)/10 p-2 text-xs text-(--color-down)">
+          {seedErr}
+        </div>
+      )}
 
       {!data ? (
         <Skeleton className="h-32" />
