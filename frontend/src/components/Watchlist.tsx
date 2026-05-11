@@ -181,7 +181,12 @@ export function Watchlist({ refreshNonce, selected, onSelect, isGuest = false }:
     <section className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-medium text-(--color-text-dim)">Watchlist</h2>
+          <h2 className="text-sm font-medium text-(--color-text-dim)">
+            Holdings{" "}
+            <span className="text-[10px] uppercase tracking-wide text-(--color-text-dim)/70">
+              currently owning
+            </span>
+          </h2>
           <span
             className="flex items-center gap-1 text-xs text-(--color-text-dim)"
             title={streamLabel(streamStatus)}
@@ -220,7 +225,7 @@ export function Watchlist({ refreshNonce, selected, onSelect, isGuest = false }:
                 setShowSuggest(false);
               }
             }}
-            placeholder="Add ticker (e.g. NFLX)"
+            placeholder="Add holding (e.g. NFLX)"
             className="w-44 rounded-md border border-(--color-border) bg-(--color-panel) px-2 py-1 text-xs uppercase placeholder:text-(--color-text-dim)/60 focus:border-(--color-accent) focus:outline-none"
           />
           <button
@@ -338,7 +343,8 @@ export function Watchlist({ refreshNonce, selected, onSelect, isGuest = false }:
                         colSpan={7}
                         className="px-3 py-6 text-center text-sm text-(--color-text-dim)"
                       >
-                        Watchlist is empty. Add a ticker above.
+                        No holdings yet. Connect a brokerage on the Portfolio
+                        tab — your positions auto-populate here.
                       </td>
                     </tr>
                   )
