@@ -257,16 +257,26 @@ async def daily_bars(symbols: list[str], days: int = 35) -> dict[str, list[dict[
 async def bars(
     symbol: str, timeframe: str = "1Day", start: str | None = None, limit: int = 365
 ) -> list[dict[str, Any]]:
-    """Historical bars for one symbol. Used by stock detail chart."""
+    """Historical bars for one symbol. Used by stock detail chart.
+
+    `adjustment=all` is critical: without it, Alpaca returns raw historical
+    prices, so any post-split company (e.g. NOW after its 10:1) shows a
+    fake cliff where pre-split history meets the post-split current quote."""
     if not _has_creds():
         raise RuntimeError("Alpaca credentials not configured")
     s = get_settings()
     url = f"{s.alpaca_data_url}/v2/stocks/{symbol}/bars"
-    params: dict[str, Any] = {"timeframe": timeframe, "limit": limit, "feed": "iex"}
+    params: dict[str, Any] = {
+        "timeframe": timeframe,
+        "limit": limit,
+        "feed": "iex",
+        "adjustment": "all",
+    }
     if start:
         params["start"] = start
 
-    key = f"bars:{symbol}:{timeframe}:{start}:{limit}"
+    # v2 in the cache key invalidates the old (unadjusted) cached payloads.
+    key = f"bars:v2:{symbol}:{timeframe}:{start}:{limit}"
 
     async def fetch() -> list[dict[str, Any]]:
         async with httpx.AsyncClient(timeout=DATA_TIMEOUT) as client:
