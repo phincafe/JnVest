@@ -71,6 +71,29 @@ class BrokerageAccountAlias(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class BuyTarget(Base):
+    """A 'buy on dip' watch entry. Each row is one ticker the owner wants to
+    accumulate at a chosen price/condition. Status (in zone / near / far) is
+    computed dynamically from live prices — we just persist the rule."""
+
+    __tablename__ = "jnv_buy_targets"
+    __table_args__ = (UniqueConstraint("symbol", name="uq_jnv_buy_target_symbol"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    # rule = how to decide when this is "in the buy zone":
+    #   "price"      → trigger when last <= target_price
+    #   "off_high"   → trigger when last is `threshold`% (or more) below 52w high
+    #   "below_sma"  → trigger when last <= the chosen SMA (threshold = 20/50/200)
+    #   "rsi"        → trigger when RSI(14) <= threshold (e.g., 35 for oversold)
+    rule: Mapped[str] = mapped_column(String(16), nullable=False, default="price")
+    target_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class IVHistory(Base):
     """Stores daily ATM IV snapshots so we can compute IV Rank/Percentile over 1Y."""
 

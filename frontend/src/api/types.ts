@@ -413,6 +413,42 @@ export type AiWatchGroup = {
 
 export type AiWatchResponse = { groups: AiWatchGroup[] };
 
+export type BuyWatchRule = "price" | "off_high" | "below_sma" | "rsi";
+export type BuyWatchStatus = "in_zone" | "near" | "far" | "unknown";
+
+export type BuyWatchTarget = {
+  id: number;
+  symbol: string;
+  rule: BuyWatchRule;
+  target_price: number | null;
+  threshold: number | null;
+  note: string | null;
+  sort_order: number;
+  // Live computed:
+  last: number;
+  high_52w: number | null;
+  low_52w: number | null;
+  off_high_pct: number | null;
+  sma20: number | null;
+  sma50: number | null;
+  sma200: number | null;
+  rsi14: number | null;
+  trigger_price: number | null;
+  /** Signed: positive = price ABOVE trigger (waiting); negative/zero = in zone. */
+  distance_pct: number | null;
+  status: BuyWatchStatus;
+};
+
+export type BuyWatchResponse = { targets: BuyWatchTarget[] };
+
+export type BuyWatchInput = {
+  symbol: string;
+  rule: BuyWatchRule;
+  target_price?: number | null;
+  threshold?: number | null;
+  note?: string | null;
+};
+
 export type AnalystRecommendation = {
   strong_buy: number;
   buy: number;

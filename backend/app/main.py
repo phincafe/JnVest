@@ -13,6 +13,7 @@ from .config import get_settings
 from .db import Base, SessionLocal, engine
 from .models import WatchlistTicker
 from .routers import (
+    buy_watch,
     calendar,
     market,
     options,
@@ -150,6 +151,7 @@ app.include_router(positions.router, prefix="/api")
 # removed from the UI. Restore by re-adding `app.include_router(orders.router, prefix="/api")`.
 app.include_router(plaid.router, prefix="/api")
 app.include_router(snaptrade.router, prefix="/api")
+app.include_router(buy_watch.router, prefix="/api")
 
 
 @app.websocket("/api/ws")
