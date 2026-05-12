@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { Briefcase, CalendarDays, LineChart, Sun } from "lucide-react";
 import { api } from "./api/client";
 import type { AuthStatus, WatchlistTicker } from "./api/types";
@@ -8,11 +8,15 @@ import { Header } from "./components/Header";
 import { LoginModal } from "./components/Login";
 import { Skeleton } from "./components/Skeleton";
 import { MobileTabBar, Tabs, type TabDef } from "./components/Tabs";
+import { lazyWithReload } from "./lib/lazyWithReload";
 
-const MorningTab = lazy(() => import("./pages/MorningTab"));
-const WatchlistTab = lazy(() => import("./pages/WatchlistTab"));
-const PortfolioTab = lazy(() => import("./pages/PortfolioTab"));
-const CalendarTab = lazy(() => import("./pages/CalendarTab"));
+// lazyWithReload auto-recovers from "Failed to fetch dynamically imported
+// module" errors that happen when a fresh deploy invalidates the asset
+// hashes the running tab is referencing.
+const MorningTab = lazyWithReload(() => import("./pages/MorningTab"));
+const WatchlistTab = lazyWithReload(() => import("./pages/WatchlistTab"));
+const PortfolioTab = lazyWithReload(() => import("./pages/PortfolioTab"));
+const CalendarTab = lazyWithReload(() => import("./pages/CalendarTab"));
 
 const TABS: TabDef[] = [
   { id: "morning", label: "Morning", icon: Sun },
