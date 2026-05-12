@@ -9,25 +9,63 @@ from ..services.indicators import sma
 router = APIRouter(prefix="/stock", tags=["stock"])
 
 
-# Range -> (alpaca timeframe, lookback days, target bar count)
-RANGE_MAP: dict[str, tuple[str, int]] = {
-    "1D": ("5Min", 1),
-    "5D": ("15Min", 5),
-    "1M": ("1Hour", 30),
-    "6M": ("1Day", 200),
-    "1Y": ("1Day", 365),
+# Calendar days to look back per range. Independent of timeframe so that
+# (range, timeframe) can vary independently — e.g. you can view 1Y of 1Hour
+# bars OR 1Y of 1Day bars; the user picks what makes sense for them.
+RANGE_DAYS: dict[str, int] = {
+    "1D": 1,
+    "5D": 5,
+    "1M": 30,
+    "3M": 90,
+    "6M": 200,
+    "1Y": 365,
+    "5Y": 365 * 5,
     # Alpaca's IEX daily history goes back ~5+ years for most names; ask for
     # 15y so we get everything available without paging.
-    "ALL": ("1Day", 365 * 15),
+    "ALL": 365 * 15,
+}
+
+# Allowed timeframes per range. The first entry is the default when caller
+# doesn't specify a timeframe. Combos that would return millions of bars
+# (e.g. 1Min over 1Y) are simply not listed → rejected at the API layer.
+RANGE_TIMEFRAMES: dict[str, list[str]] = {
+    "1D": ["5Min", "1Min", "15Min", "30Min", "1Hour"],
+    "5D": ["15Min", "5Min", "30Min", "1Hour"],
+    "1M": ["1Hour", "30Min", "1Day"],
+    "3M": ["1Hour", "1Day"],
+    "6M": ["1Day", "1Hour"],
+    "1Y": ["1Day", "1Week"],
+    "5Y": ["1Week", "1Day"],
+    "ALL": ["1Day", "1Week", "1Month"],
 }
 
 
+@router.get("/{symbol}/bars/timeframes")
+async def stock_bars_timeframes() -> dict[str, list[str]]:
+    """Allowed (range → timeframes) so the frontend can render valid pickers
+    without hard-coding the same combos."""
+    return RANGE_TIMEFRAMES
+
+
 @router.get("/{symbol}/bars")
-async def stock_bars(symbol: str, range: str = Query("1M")) -> dict[str, Any]:
+async def stock_bars(
+    symbol: str,
+    range: str = Query("1M"),
+    timeframe: str | None = Query(None),
+) -> dict[str, Any]:
     rng = range.upper()
-    if rng not in RANGE_MAP:
+    if rng not in RANGE_DAYS:
         raise HTTPException(status_code=400, detail=f"unknown range '{range}'")
-    timeframe, lookback_days = RANGE_MAP[rng]
+    allowed_tfs = RANGE_TIMEFRAMES[rng]
+    if timeframe is None:
+        timeframe = allowed_tfs[0]
+    if timeframe not in allowed_tfs:
+        raise HTTPException(
+            status_code=400,
+            detail=f"timeframe '{timeframe}' not allowed for range '{rng}'. "
+            f"Valid: {', '.join(allowed_tfs)}",
+        )
+    lookback_days = RANGE_DAYS[rng]
 
     # For SMAs to be meaningful we need at least 200 prior closes; pull extra
     # for daily ranges. For intraday ranges we just show in-view SMAs.

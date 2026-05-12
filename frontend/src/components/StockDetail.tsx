@@ -12,17 +12,54 @@ import { InsiderPanel } from "./InsiderPanel";
 import { OptionsPanel } from "./OptionsPanel";
 import { Skeleton } from "./Skeleton";
 
-const RANGES = ["1D", "5D", "1M", "6M", "1Y", "ALL"] as const;
+const RANGES = ["1D", "5D", "1M", "3M", "6M", "1Y", "5Y", "ALL"] as const;
 type Range = (typeof RANGES)[number];
+
+// Allowed (range → timeframes) — first entry is the default. Mirrors the
+// backend's RANGE_TIMEFRAMES so we can render valid pickers without an
+// extra round trip. Backend rejects any combo not listed here.
+const RANGE_TIMEFRAMES: Record<Range, string[]> = {
+  "1D": ["5Min", "1Min", "15Min", "30Min", "1Hour"],
+  "5D": ["15Min", "5Min", "30Min", "1Hour"],
+  "1M": ["1Hour", "30Min", "1Day"],
+  "3M": ["1Hour", "1Day"],
+  "6M": ["1Day", "1Hour"],
+  "1Y": ["1Day", "1Week"],
+  "5Y": ["1Week", "1Day"],
+  ALL: ["1Day", "1Week", "1Month"],
+};
+
+// Friendly labels for the interval pills.
+const TF_LABELS: Record<string, string> = {
+  "1Min": "1m",
+  "5Min": "5m",
+  "15Min": "15m",
+  "30Min": "30m",
+  "1Hour": "1h",
+  "1Day": "1D",
+  "1Week": "1W",
+  "1Month": "1M",
+};
 
 type Props = { symbol: string | null };
 
 export function StockDetail({ symbol }: Props) {
   const [range, setRange] = useState<Range>("1M");
+  const [timeframe, setTimeframe] = useState<string>(RANGE_TIMEFRAMES["1M"][0]);
   const [bars, setBars] = useState<StockBarsResponse | null>(null);
   const [news, setNews] = useState<StockNewsResponse | null>(null);
   const [fund, setFund] = useState<StockFundamentals | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  // When range changes, snap timeframe to the new range's default so we
+  // never end up with an invalid combo (e.g., 1Min + 1Y).
+  useEffect(() => {
+    const allowed = RANGE_TIMEFRAMES[range];
+    if (!allowed.includes(timeframe)) {
+      setTimeframe(allowed[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range]);
 
   useEffect(() => {
     if (!symbol) return;
@@ -32,7 +69,9 @@ export function StockDetail({ symbol }: Props) {
     setNews(null);
     setFund(null);
     Promise.all([
-      api.get<StockBarsResponse>(`/stock/${symbol}/bars?range=${range}`),
+      api.get<StockBarsResponse>(
+        `/stock/${symbol}/bars?range=${range}&timeframe=${encodeURIComponent(timeframe)}`,
+      ),
       api.get<StockNewsResponse>(`/stock/${symbol}/news?limit=10`),
       api.get<StockFundamentals>(`/stock/${symbol}/fundamentals`),
     ])
@@ -49,7 +88,7 @@ export function StockDetail({ symbol }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [symbol, range]);
+  }, [symbol, range, timeframe]);
 
   if (!symbol) {
     return (
@@ -61,22 +100,42 @@ export function StockDetail({ symbol }: Props) {
 
   return (
     <section className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold">{symbol}</h2>
-        <div className="flex items-center gap-1 rounded-md border border-(--color-border) bg-(--color-panel) p-0.5">
-          {RANGES.map((r) => (
-            <button
-              key={r}
-              onClick={() => setRange(r)}
-              className={`rounded px-2 py-1 text-xs ${
-                r === range
-                  ? "bg-(--color-accent) text-white"
-                  : "text-(--color-text-dim) hover:text-(--color-text)"
-              }`}
-            >
-              {r}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Interval picker — only shows valid timeframes for the current range. */}
+          <div className="flex items-center gap-1 rounded-md border border-(--color-border) bg-(--color-panel) p-0.5">
+            {RANGE_TIMEFRAMES[range].map((tf) => (
+              <button
+                key={tf}
+                onClick={() => setTimeframe(tf)}
+                className={`rounded px-2 py-1 text-xs ${
+                  tf === timeframe
+                    ? "bg-(--color-accent) text-white"
+                    : "text-(--color-text-dim) hover:text-(--color-text)"
+                }`}
+                title={`Candle: ${TF_LABELS[tf] ?? tf}`}
+              >
+                {TF_LABELS[tf] ?? tf}
+              </button>
+            ))}
+          </div>
+          {/* Range picker. */}
+          <div className="flex items-center gap-1 rounded-md border border-(--color-border) bg-(--color-panel) p-0.5">
+            {RANGES.map((r) => (
+              <button
+                key={r}
+                onClick={() => setRange(r)}
+                className={`rounded px-2 py-1 text-xs ${
+                  r === range
+                    ? "bg-(--color-accent) text-white"
+                    : "text-(--color-text-dim) hover:text-(--color-text)"
+                }`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
