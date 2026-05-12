@@ -19,7 +19,17 @@ type State =
       lastUpdated: Date;
     };
 
-export function MarketContext({ refreshNonce }: { refreshNonce: number }) {
+type Props = {
+  refreshNonce: number;
+  /** Click handler for the index/sector/macro tiles. When set, each tile
+   * becomes a button that selects that ticker — used by the Morning tab
+   * to drive the IndexChart below. */
+  onSymbolSelect?: (sym: string) => void;
+  /** Currently active symbol (for highlighting the matching tile). */
+  selectedSymbol?: string;
+};
+
+export function MarketContext({ refreshNonce, onSymbolSelect, selectedSymbol }: Props) {
   const [state, setState] = useState<State>({ status: "loading" });
 
   useEffect(() => {
@@ -92,13 +102,28 @@ export function MarketContext({ refreshNonce }: { refreshNonce: number }) {
       </div>
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
         {state.indices.tiles.map((t) => (
-          <IndexTile key={t.symbol} tile={t} />
+          <IndexTile
+            key={t.symbol}
+            tile={t}
+            onSelect={onSymbolSelect}
+            active={selectedSymbol === t.symbol}
+          />
         ))}
         {Object.entries(state.macro).map(([name, tile]) => (
-          <MacroTile key={name} name={name} tile={tile} />
+          <MacroTile
+            key={name}
+            name={name}
+            tile={tile}
+            onSelect={onSymbolSelect}
+            active={selectedSymbol === tile.symbol}
+          />
         ))}
       </div>
-      <SectorHeatmap tiles={state.sectors.tiles} />
+      <SectorHeatmap
+        tiles={state.sectors.tiles}
+        onSelect={onSymbolSelect}
+        selectedSymbol={selectedSymbol}
+      />
     </section>
   );
 }

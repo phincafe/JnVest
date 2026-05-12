@@ -25,26 +25,37 @@ function bg(pct: number): string {
   return `rgba(220, 38, 38, ${alpha.toFixed(2)})`;
 }
 
-type Props = { tiles: IndexTile[] };
+type Props = {
+  tiles: IndexTile[];
+  onSelect?: (sym: string) => void;
+  selectedSymbol?: string;
+};
 
-export function SectorHeatmap({ tiles }: Props) {
+export function SectorHeatmap({ tiles, onSelect, selectedSymbol }: Props) {
   return (
     <div className="rounded-lg border border-(--color-border) bg-(--color-panel) p-2.5">
       <h3 className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-(--color-text-dim)">
         Sectors (SPDR ETFs)
       </h3>
       <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-11">
-        {tiles.map((t) => (
-          <div
-            key={t.symbol}
-            className="flex flex-col rounded-md px-1.5 py-1 text-[11px] leading-tight"
-            style={{ backgroundColor: bg(t.change_pct) }}
-            title={SECTOR_LABELS[t.symbol] ?? t.symbol}
-          >
-            <span className="font-medium">{t.symbol}</span>
-            <span className="tabular-nums">{fmtPct(t.change_pct)}</span>
-          </div>
-        ))}
+        {tiles.map((t) => {
+          const Component: "button" | "div" = onSelect ? "button" : "div";
+          const active = selectedSymbol === t.symbol;
+          return (
+            <Component
+              key={t.symbol}
+              onClick={onSelect ? () => onSelect(t.symbol) : undefined}
+              className={`flex flex-col rounded-md px-1.5 py-1 text-[11px] leading-tight transition-all ${
+                onSelect ? "cursor-pointer hover:brightness-125" : ""
+              } ${active ? "ring-2 ring-white/70" : ""}`}
+              style={{ backgroundColor: bg(t.change_pct) }}
+              title={SECTOR_LABELS[t.symbol] ?? t.symbol}
+            >
+              <span className="font-medium">{t.symbol}</span>
+              <span className="tabular-nums">{fmtPct(t.change_pct)}</span>
+            </Component>
+          );
+        })}
       </div>
     </div>
   );

@@ -7,12 +7,25 @@ const LABELS: Record<string, string> = {
   UUP: "USD Index (UUP)",
 };
 
-type Props = { name: string; tile: MacroEntry };
+type Props = {
+  name: string;
+  tile: MacroEntry;
+  onSelect?: (sym: string) => void;
+  active?: boolean;
+};
 
-export function MacroTile({ name, tile }: Props) {
+export function MacroTile({ name, tile, onSelect, active }: Props) {
   const data = tile.spark.map((y, x) => ({ x, y }));
+  const Component: "button" | "div" = onSelect ? "button" : "div";
   return (
-    <div className="rounded-lg border border-(--color-border) bg-(--color-panel) p-2.5">
+    <Component
+      onClick={onSelect ? () => onSelect(tile.symbol) : undefined}
+      className={`block w-full rounded-lg border bg-(--color-panel) p-2.5 text-left transition-colors ${
+        active
+          ? "border-(--color-accent) ring-1 ring-(--color-accent)/40"
+          : "border-(--color-border)"
+      } ${onSelect ? "cursor-pointer hover:border-(--color-text-dim)" : ""}`}
+    >
       <div className="flex items-center justify-between">
         <span className="text-[10px] uppercase tracking-wide text-(--color-text-dim)">
           {LABELS[name] ?? name}
@@ -41,6 +54,6 @@ export function MacroTile({ name, tile }: Props) {
           </ResponsiveContainer>
         </div>
       </div>
-    </div>
+    </Component>
   );
 }

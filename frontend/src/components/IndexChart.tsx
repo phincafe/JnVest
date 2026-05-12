@@ -41,8 +41,17 @@ type Resp = {
 const tToTime = (t: string): Time =>
   Math.floor(new Date(t).getTime() / 1000) as unknown as Time;
 
-export function IndexChart() {
-  const [symbol, setSymbol] = useState("SPY");
+type IndexChartProps = {
+  /** Controlled symbol — when provided, the picker mirrors it. Tiles in
+   * MarketContext set this via onSymbolChange. Falls back to internal state. */
+  symbol?: string;
+  onSymbolChange?: (sym: string) => void;
+};
+
+export function IndexChart({ symbol: symbolProp, onSymbolChange }: IndexChartProps = {}) {
+  const [internalSymbol, setInternalSymbol] = useState("SPY");
+  const symbol = symbolProp ?? internalSymbol;
+  const setSymbol = onSymbolChange ?? setInternalSymbol;
   const [interval, setInterval] = useState("5Min");
   const [chartType, setChartType] = useState<"area" | "candle">("candle");
 
@@ -205,7 +214,15 @@ export function IndexChart() {
         <div className="flex flex-wrap items-center gap-1">
           <Picker
             value={symbol}
-            options={INDEXES.map((i) => ({ value: i.sym, label: i.label }))}
+            options={(() => {
+              const base = INDEXES.map((i) => ({ value: i.sym, label: i.label }));
+              // Ensure the active symbol is always present in the dropdown,
+              // even when it came from a sector/macro tile click that isn't
+              // in the INDEXES list (XLK, VIXY, UUP, etc.).
+              return base.some((o) => o.value === symbol)
+                ? base
+                : [{ value: symbol, label: symbol }, ...base];
+            })()}
             onChange={setSymbol}
           />
           <Picker value={interval} options={INTERVALS} onChange={setInterval} />
