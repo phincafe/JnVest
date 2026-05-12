@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { Check, ExternalLink, ListPlus, Pencil, RefreshCcw, Trash2, X } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type {
@@ -279,15 +279,15 @@ export function SnapTradePanel({
                   options={holdings.options}
                   selected={selectedAccountId}
                   onSelect={setSelectedAccountId}
-                />
-              )}
-              {holdings && (
-                <SelectedAccountDetail
-                  selectedId={selectedAccountId}
-                  holdings={holdings}
-                  auths={auths}
-                  onDisconnect={disconnect}
-                  busy={busy}
+                  detailNode={
+                    <SelectedAccountDetail
+                      selectedId={selectedAccountId}
+                      holdings={holdings}
+                      auths={auths}
+                      onDisconnect={disconnect}
+                      busy={busy}
+                    />
+                  }
                 />
               )}
             </>
@@ -304,12 +304,16 @@ function AccountChips({
   options,
   selected,
   onSelect,
+  detailNode,
 }: {
   accounts: SnapTradeAccount[];
   positions: SnapTradeStock[];
   options: SnapTradeOption[];
   selected: string;
   onSelect: (id: string) => void;
+  /** Rendered inline in the same grid right after the selected chip,
+   * spanning the full row so it visually attaches to its account. */
+  detailNode?: React.ReactNode;
 }) {
   const totalEq = accounts.reduce((s, a) => s + (a.equity || a.balance || 0), 0);
   const totalCash = accounts.reduce((s, a) => s + (a.cash || 0), 0);
@@ -362,22 +366,29 @@ function AccountChips({
           invested={totalInvested}
           cash={totalCash}
         />
+        {selected === "all" && detailNode && (
+          <div className="col-span-full mt-1">{detailNode}</div>
+        )}
         {sorted.map((a) => (
-          <Chip
-            key={a.id}
-            active={selected === a.id}
-            onClick={() => onSelect(a.id)}
-            title={a.name}
-            subtitle={a.broker + (a.type ? ` · ${a.type}` : "")}
-            amount={`$${fmtPrice(a.balance || 0)}`}
-            todayPl={a.today_pl}
-            todayPlPct={a.today_pl_pct}
-            todayComplete={a.today_pl_complete}
-            openPl={a.open_pl}
-            openPlPct={a.open_pl_pct}
-            invested={a.invested}
-            cash={a.cash || 0}
-          />
+          <Fragment key={a.id}>
+            <Chip
+              active={selected === a.id}
+              onClick={() => onSelect(a.id)}
+              title={a.name}
+              subtitle={a.broker + (a.type ? ` · ${a.type}` : "")}
+              amount={`$${fmtPrice(a.balance || 0)}`}
+              todayPl={a.today_pl}
+              todayPlPct={a.today_pl_pct}
+              todayComplete={a.today_pl_complete}
+              openPl={a.open_pl}
+              openPlPct={a.open_pl_pct}
+              invested={a.invested}
+              cash={a.cash || 0}
+            />
+            {selected === a.id && detailNode && (
+              <div className="col-span-full mt-1">{detailNode}</div>
+            )}
+          </Fragment>
         ))}
       </div>
     </div>

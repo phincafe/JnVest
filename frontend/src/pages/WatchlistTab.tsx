@@ -16,6 +16,14 @@ type Props = {
   isGuest?: boolean;
 };
 
+type ListKey = "holdings" | "buy" | "ai" | "wsb";
+const LIST_TABS: { key: ListKey; label: string }[] = [
+  { key: "holdings", label: "Holdings" },
+  { key: "buy", label: "Buy Watch" },
+  { key: "ai", label: "AI Watch" },
+  { key: "wsb", label: "WSB" },
+];
+
 export default function WatchlistTab({
   refreshNonce,
   requestedSymbol,
@@ -23,6 +31,10 @@ export default function WatchlistTab({
   isGuest = false,
 }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
+  // Active list in the left column. Tabs at the top let the user jump
+  // between Holdings / Buy Watch / AI Watch / WSB without scrolling
+  // through all four stacked.
+  const [activeList, setActiveList] = useState<ListKey>("holdings");
 
   useEffect(() => {
     if (requestedSymbol) {
@@ -34,24 +46,47 @@ export default function WatchlistTab({
   return (
     <div className="mx-auto max-w-[100rem] px-2 py-4 sm:px-4">
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        {/* LEFT column — your watchlist + the discovery widgets, stacked.
-            Personal watchlist stays on top per request; everything else flows
-            below it. Hidden on mobile when a symbol is selected so the
-            detail panel takes over the screen. */}
-        <div className={`${selected ? "hidden lg:block" : "block"} space-y-6`}>
-          <Watchlist
-            refreshNonce={refreshNonce}
-            selected={selected}
-            onSelect={setSelected}
-            isGuest={isGuest}
-          />
-          <BuyWatch
-            refreshNonce={refreshNonce}
-            onSelect={setSelected}
-            isGuest={isGuest}
-          />
-          <AiWatch refreshNonce={refreshNonce} onSelect={setSelected} />
-          <WsbPulse refreshNonce={refreshNonce} onSelect={setSelected} />
+        {/* LEFT column — list switcher tabs, then the active list.
+            Hidden on mobile when a symbol is selected so the detail
+            panel takes over the screen. */}
+        <div className={`${selected ? "hidden lg:block" : "block"} space-y-3`}>
+          <div className="flex flex-wrap items-center gap-1 rounded-md border border-(--color-border) bg-(--color-panel) p-1">
+            {LIST_TABS.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setActiveList(t.key)}
+                className={`flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors sm:flex-none ${
+                  activeList === t.key
+                    ? "bg-(--color-accent) text-white"
+                    : "text-(--color-text-dim) hover:text-(--color-text)"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {activeList === "holdings" && (
+            <Watchlist
+              refreshNonce={refreshNonce}
+              selected={selected}
+              onSelect={setSelected}
+              isGuest={isGuest}
+            />
+          )}
+          {activeList === "buy" && (
+            <BuyWatch
+              refreshNonce={refreshNonce}
+              onSelect={setSelected}
+              isGuest={isGuest}
+            />
+          )}
+          {activeList === "ai" && (
+            <AiWatch refreshNonce={refreshNonce} onSelect={setSelected} />
+          )}
+          {activeList === "wsb" && (
+            <WsbPulse refreshNonce={refreshNonce} onSelect={setSelected} />
+          )}
         </div>
 
         {/* RIGHT column — sticky StockDetail. Stays in view as the user
