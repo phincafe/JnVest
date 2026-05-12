@@ -41,6 +41,18 @@ const TF_LABELS: Record<string, string> = {
   "1Month": "1M",
 };
 
+// Approximate minutes-per-bar for display sorting (1D=1Min → 1Month=43200).
+const TF_MINUTES: Record<string, number> = {
+  "1Min": 1,
+  "5Min": 5,
+  "15Min": 15,
+  "30Min": 30,
+  "1Hour": 60,
+  "1Day": 60 * 24,
+  "1Week": 60 * 24 * 7,
+  "1Month": 60 * 24 * 30,
+};
+
 type Props = { symbol: string | null };
 
 export function StockDetail({ symbol }: Props) {
@@ -105,20 +117,24 @@ export function StockDetail({ symbol }: Props) {
         <div className="flex flex-wrap items-center gap-2">
           {/* Interval picker — only shows valid timeframes for the current range. */}
           <div className="flex items-center gap-1 rounded-md border border-(--color-border) bg-(--color-panel) p-0.5">
-            {RANGE_TIMEFRAMES[range].map((tf) => (
-              <button
-                key={tf}
-                onClick={() => setTimeframe(tf)}
-                className={`rounded px-2 py-1 text-xs ${
-                  tf === timeframe
-                    ? "bg-(--color-accent) text-white"
-                    : "text-(--color-text-dim) hover:text-(--color-text)"
-                }`}
-                title={`Candle: ${TF_LABELS[tf] ?? tf}`}
-              >
-                {TF_LABELS[tf] ?? tf}
-              </button>
-            ))}
+            {/* Sort ascending by candle size for display; the array's "first
+                entry is the default" semantics still hold via the snap effect. */}
+            {[...RANGE_TIMEFRAMES[range]]
+              .sort((a, b) => (TF_MINUTES[a] ?? 0) - (TF_MINUTES[b] ?? 0))
+              .map((tf) => (
+                <button
+                  key={tf}
+                  onClick={() => setTimeframe(tf)}
+                  className={`rounded px-2 py-1 text-xs ${
+                    tf === timeframe
+                      ? "bg-(--color-accent) text-white"
+                      : "text-(--color-text-dim) hover:text-(--color-text)"
+                  }`}
+                  title={`Candle: ${TF_LABELS[tf] ?? tf}`}
+                >
+                  {TF_LABELS[tf] ?? tf}
+                </button>
+              ))}
           </div>
           {/* Range picker. */}
           <div className="flex items-center gap-1 rounded-md border border-(--color-border) bg-(--color-panel) p-0.5">
