@@ -177,6 +177,27 @@ async def earnings_for_symbol(symbol: str) -> dict[str, Any] | None:
     return await cache.aget_or_set(f"finnhub-er:{symbol}", fetch, ttl_seconds=3600)
 
 
+async def recent_earnings(symbol: str, limit: int = 4) -> list[dict[str, Any]]:
+    """Past earnings results: actual EPS vs estimate + surprise %. Newest-first.
+    Finnhub's `/stock/earnings` is free-tier and typically returns the last 4 quarters."""
+
+    async def fetch() -> list[dict[str, Any]]:
+        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            r = await client.get(
+                f"{BASE}/stock/earnings",
+                params={"symbol": symbol, "token": _key()},
+            )
+            r.raise_for_status()
+            data = r.json() or []
+            if not isinstance(data, list):
+                return []
+            return data[:limit]
+
+    return await cache.aget_or_set(
+        f"finnhub-er-history:{symbol}:{limit}", fetch, ttl_seconds=3600
+    )
+
+
 async def market_news(category: str = "general", limit: int = 30) -> list[dict[str, Any]]:
     """General market news (or 'forex'/'crypto'/'merger'). Free tier."""
 

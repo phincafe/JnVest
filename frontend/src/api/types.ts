@@ -521,6 +521,16 @@ export type InsiderResponse = {
   warning?: string;
 };
 
+export type LastEarnings = {
+  period: string | null;
+  quarter: number | null;
+  year: number | null;
+  eps_actual: number | null;
+  eps_estimate: number | null;
+  surprise: number | null;
+  surprise_percent: number | null;
+};
+
 export type StockFundamentals = {
   symbol: string;
   next_earnings: string | null;
@@ -535,4 +545,5 @@ export type StockFundamentals = {
   fifty_two_week_high: number | null;
   fifty_two_week_low: number | null;
   analyst_recommendation: AnalystRecommendation | null;
+  last_earnings: LastEarnings | null;
 };
