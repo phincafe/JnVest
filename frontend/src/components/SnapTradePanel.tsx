@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { createContext, Fragment, useCallback, useContext, useEffect, useState } from "react";
 import { Check, ExternalLink, ListPlus, Pencil, RefreshCcw, Trash2, X } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type {
@@ -12,7 +12,16 @@ import type {
 import { useCachedFetch, clearCacheKey, mutateCache } from "../hooks/useCachedFetch";
 import { changeClass, fmtPct, fmtPrice } from "../lib/format";
 import { GuestPortfolioView } from "./GuestPortfolioView";
+import { OptionPnLModal } from "./OptionPnLModal";
 import { Skeleton } from "./Skeleton";
+
+// Lets any owned-options table open the P/L modal without threading a callback
+// through AggregatedDetail / SelectedAccountDetail / AccountSection /
+// GuestPortfolioView. Provider sits at the SnapTradePanel root; modal state
+// lives there too. Exported so GuestPortfolioView can consume it.
+export const OptionSelectionContext = createContext<
+  ((o: SnapTradeOption) => void) | null
+>(null);
 
 const REFRESH_MS = 5 * 60_000;
 
@@ -53,6 +62,9 @@ export function SnapTradePanel({
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("all");
+  const [selectedOption, setSelectedOption] = useState<SnapTradeOption | null>(
+    null,
+  );
 
   // Stale-while-revalidate caches keep data on screen across tab switches and
   // refreshNonce bumps. The skeleton only shows on the very first load.
@@ -167,11 +179,24 @@ export function SnapTradePanel({
     if (!holdings) {
       return <Skeleton className="h-64 w-full" />;
     }
-    return <GuestPortfolioView holdings={holdings} />;
+    return (
+      <OptionSelectionContext.Provider value={setSelectedOption}>
+        <OptionPnLModal
+          option={selectedOption}
+          onClose={() => setSelectedOption(null)}
+        />
+        <GuestPortfolioView holdings={holdings} />
+      </OptionSelectionContext.Provider>
+    );
   }
 
   return (
+    <OptionSelectionContext.Provider value={setSelectedOption}>
     <section className="space-y-3">
+      <OptionPnLModal
+        option={selectedOption}
+        onClose={() => setSelectedOption(null)}
+      />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-medium text-(--color-text-dim)">
           Brokerages
@@ -295,6 +320,7 @@ export function SnapTradePanel({
         </>
       )}
     </section>
+    </OptionSelectionContext.Provider>
   );
 }
 
@@ -921,6 +947,7 @@ function SubPositionsTable({ positions }: { positions: SnapTradeStock[] }) {
 }
 
 function SubOptionsTable({ options }: { options: SnapTradeOption[] }) {
+  const onSelect = useContext(OptionSelectionContext);
   return (
     <div>
       <h4 className="mb-2 text-xs uppercase tracking-wide text-(--color-text-dim)">
@@ -942,8 +969,20 @@ function SubOptionsTable({ options }: { options: SnapTradeOption[] }) {
             </tr>
           </thead>
           <tbody>
-            {options.map((o, i) => (
-              <tr key={i} className="border-t border-(--color-border)">
+            {options.map((o, i) => {
+              const clickable =
+                !!onSelect && !!o.underlying && !!o.expiration && o.strike != null;
+              return (
+              <tr
+                key={i}
+                className={`border-t border-(--color-border) ${
+                  clickable
+                    ? "cursor-pointer hover:bg-(--color-panel-2)"
+                    : ""
+                }`}
+                onClick={clickable ? () => onSelect?.(o) : undefined}
+                title={clickable ? "Open projected P/L" : undefined}
+              >
                 <td className="py-1 font-medium">{o.underlying ?? "—"}</td>
                 <td className="py-1 capitalize">{o.option_type?.toLowerCase() ?? "—"}</td>
                 <td className="py-1 text-right tabular-nums">
@@ -965,7 +1004,8 @@ function SubOptionsTable({ options }: { options: SnapTradeOption[] }) {
                   )}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
