@@ -14,7 +14,7 @@ import {
 import { api, ApiError } from "../api/client";
 import type { ChainResponse, OptionRow, SnapTradeOption } from "../api/types";
 import { fmtPrice } from "../lib/format";
-import { bsPrice, optionPnL } from "../lib/blackScholes";
+import { optionPnL } from "../lib/blackScholes";
 import { Skeleton } from "./Skeleton";
 
 type Props = {
