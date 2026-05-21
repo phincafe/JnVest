@@ -104,8 +104,8 @@ export default function WatchlistTab({
                 <ChevronLeft size={16} /> Lists
               </button>
             )}
-            {!selected && isGuest ? (
-              <GuestSearchPanel onSelect={setSelected} />
+            {!selected ? (
+              <SearchPanel onSelect={setSelected} />
             ) : (
               <StockDetail symbol={selected} />
             )}
@@ -116,7 +116,7 @@ export default function WatchlistTab({
   );
 }
 
-function GuestSearchPanel({ onSelect }: { onSelect: (sym: string) => void }) {
+function SearchPanel({ onSelect }: { onSelect: (sym: string) => void }) {
   const [q, setQ] = useState("");
   const [hi, setHi] = useState(0);
   const results = useTickerSearch(q);
