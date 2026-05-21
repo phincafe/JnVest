@@ -17,5 +17,41 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Self-heal if a stale service-worker shell points to dead asset hashes
+      // and the app never mounts (black page). If #root is still empty after
+      // 8s, unregister the SW + drop caches + reload — once per minute.
+      (function () {
+        var KEY = "jnvest:sw_recover_at";
+        var GUARD_MS = 60000;
+        setTimeout(function () {
+          var root = document.getElementById("root");
+          if (!root || root.childNodes.length > 0) return;
+          try {
+            var last = parseInt(sessionStorage.getItem(KEY) || "0", 10);
+            if (Date.now() - last < GUARD_MS) return;
+            sessionStorage.setItem(KEY, String(Date.now()));
+          } catch (e) {}
+          var done = function () { location.reload(); };
+          if ("serviceWorker" in navigator) {
+            navigator.serviceWorker
+              .getRegistrations()
+              .then(function (regs) {
+                return Promise.all(regs.map(function (r) { return r.unregister(); }));
+              })
+              .then(function () {
+                if (window.caches && caches.keys) {
+                  return caches.keys().then(function (names) {
+                    return Promise.all(names.map(function (n) { return caches.delete(n); }));
+                  });
+                }
+              })
+              .then(done, done);
+          } else {
+            done();
+          }
+        }, 8000);
+      })();
+    </script>
   </body>
 </html>
