@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useContext, useMemo, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import type { SnapTradeHoldings } from "../api/types";
 import { fmtPrice } from "../lib/format";
+import { OptionSelectionContext } from "./SnapTradePanel";
 
 type Slice = {
   label: string;
@@ -70,6 +71,11 @@ export function GuestPortfolioView({
   /** When true, hide the "public view / $ hidden" framing — owner already sees $ above. */
   ownerMode?: boolean;
 }) {
+  // Provided by SnapTradePanel — opens the projected-P/L modal when a row is
+  // clicked. Null outside that provider (e.g. if the view ever gets used
+  // standalone), in which case rows just aren't clickable.
+  const onSelectOption = useContext(OptionSelectionContext);
+
   // Total portfolio % per category (lets us label "Stocks: 78% of portfolio")
   const stockPctOfPortfolio = holdings.positions.reduce(
     (s, p) => s + (p.allocation_pct ?? 0),
@@ -242,8 +248,23 @@ export function GuestPortfolioView({
                 </tr>
               </thead>
               <tbody>
-                {holdings.options.map((o, i) => (
-                  <tr key={i} className="border-t border-(--color-border)">
+                {holdings.options.map((o, i) => {
+                  const clickable =
+                    !!onSelectOption &&
+                    !!o.underlying &&
+                    !!o.expiration &&
+                    o.strike != null;
+                  return (
+                  <tr
+                    key={i}
+                    className={`border-t border-(--color-border) ${
+                      clickable
+                        ? "cursor-pointer hover:bg-(--color-panel-2)"
+                        : ""
+                    }`}
+                    onClick={clickable ? () => onSelectOption?.(o) : undefined}
+                    title={clickable ? "Open projected P/L" : undefined}
+                  >
                     <td className="py-1.5 font-medium">{o.underlying ?? "—"}</td>
                     <td className="py-1.5 capitalize">
                       {o.option_type?.toLowerCase() ?? "—"}
@@ -270,7 +291,8 @@ export function GuestPortfolioView({
                         : "—"}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
