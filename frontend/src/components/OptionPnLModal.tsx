@@ -240,7 +240,8 @@ export function OptionPnLModal({ option, onClose }: Props) {
                     dataKey="spot"
                     type="number"
                     domain={["dataMin", "dataMax"]}
-                    tickFormatter={(v) => `$${Number(v).toFixed(0)}`}
+                    tick={<SpotTick spot={spot ?? 0} />}
+                    height={42}
                     stroke="var(--color-text-dim)"
                     fontSize={11}
                   />
@@ -258,7 +259,13 @@ export function OptionPnLModal({ option, onClose }: Props) {
                       borderRadius: 8,
                       fontSize: 12,
                     }}
-                    labelFormatter={(v) => `Spot $${Number(v).toFixed(2)}`}
+                    labelFormatter={(v) => {
+                      const s = Number(v);
+                      const pct = spot ? ((s - spot) / spot) * 100 : null;
+                      return pct != null
+                        ? `Spot $${s.toFixed(2)} (${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%)`
+                        : `Spot $${s.toFixed(2)}`;
+                    }}
                     formatter={(value: number, name: string) => [
                       `${value >= 0 ? "+" : "-"}$${Math.abs(value).toFixed(0)}`,
                       name,
@@ -352,6 +359,53 @@ export function OptionPnLModal({ option, onClose }: Props) {
         </div>
       </div>
     </div>
+  );
+}
+
+// Custom X-axis tick: shows the dollar spot on the first line and its %
+// change vs the current spot on the second. Plain Recharts tickFormatter
+// can't render two lines, so we draw the <g><text>…</text></g> ourselves.
+function SpotTick({
+  x,
+  y,
+  payload,
+  spot,
+}: {
+  x?: number;
+  y?: number;
+  payload?: { value: number };
+  spot: number;
+}) {
+  if (x == null || y == null || !payload) return null;
+  const v = payload.value;
+  const pct = spot > 0 ? ((v - spot) / spot) * 100 : null;
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        x={0}
+        y={0}
+        dy={14}
+        textAnchor="middle"
+        fill="var(--color-text-dim)"
+        fontSize={11}
+      >
+        ${Math.round(v)}
+      </text>
+      {pct != null && (
+        <text
+          x={0}
+          y={0}
+          dy={28}
+          textAnchor="middle"
+          fill="var(--color-text-dim)"
+          fontSize={9}
+          opacity={0.75}
+        >
+          {pct >= 0 ? "+" : ""}
+          {pct.toFixed(0)}%
+        </text>
+      )}
+    </g>
   );
 }
 
