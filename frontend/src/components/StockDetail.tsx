@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ExternalLink } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type {
+  LastEarnings,
   StockBarsResponse,
   StockFundamentals,
   StockNewsResponse,
@@ -210,6 +211,44 @@ function fmtMarketCap(mcapMillions: number | null | undefined): string {
   return `$${mcapMillions.toFixed(0)}M`;
 }
 
+function fmtLastEarningsPeriod(le: LastEarnings | null): string {
+  if (!le) return "—";
+  if (le.quarter && le.year) return `Q${le.quarter} ${le.year}`;
+  return le.period ?? "—";
+}
+
+function fmtEps(v: number | null | undefined): string {
+  if (v == null) return "—";
+  // EPS can be negative; show sign so a $-0.42 actual is unmistakable.
+  return `${v < 0 ? "-" : ""}$${Math.abs(v).toFixed(2)}`;
+}
+
+function LastEpsValue({ le }: { le: LastEarnings | null }) {
+  if (!le || (le.eps_actual == null && le.eps_estimate == null)) {
+    return <span>—</span>;
+  }
+  const actual = fmtEps(le.eps_actual);
+  const est = fmtEps(le.eps_estimate);
+  const pct = le.surprise_percent;
+  const surpriseClass =
+    pct == null
+      ? "text-(--color-text-dim)"
+      : pct >= 0
+        ? "text-(--color-up)"
+        : "text-(--color-down)";
+  return (
+    <span>
+      {actual} / {est}
+      {pct != null && (
+        <span className={`ml-1 ${surpriseClass}`}>
+          {pct >= 0 ? "+" : ""}
+          {pct.toFixed(1)}%
+        </span>
+      )}
+    </span>
+  );
+}
+
 function FundamentalsCard({ fund }: { fund: StockFundamentals | null }) {
   const hasAnalystData =
     !!fund &&
@@ -231,6 +270,14 @@ function FundamentalsCard({ fund }: { fund: StockFundamentals | null }) {
           <dl className="grid grid-cols-2 gap-y-2 text-sm">
             <Row label="Next earnings" value={fund.next_earnings ?? "—"} />
             <Row label="Ex-dividend" value={fund.ex_dividend ?? "—"} />
+            <Row
+              label="Last earnings"
+              value={fmtLastEarningsPeriod(fund.last_earnings)}
+            />
+            <Row
+              label="EPS (act / est)"
+              value={<LastEpsValue le={fund.last_earnings} />}
+            />
             <Row label="Market cap" value={fmtMarketCap(fund.market_cap)} />
             <Row
               label="Analyst target avg"
@@ -384,7 +431,7 @@ function RecommendationBar({
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
     <>
       <dt className="text-(--color-text-dim)">{label}</dt>

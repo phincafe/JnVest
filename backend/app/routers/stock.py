@@ -192,6 +192,7 @@ async def stock_fundamentals(symbol: str) -> dict[str, Any]:
         "analyst_target_low": None,
         "analyst_count": None,
         "analyst_recommendation": None,  # latest period buy/hold/sell breakdown
+        "last_earnings": None,  # most recent reported quarter: actual vs estimate
         "market_cap": None,
         "trailing_pe": None,
         "forward_pe": None,
@@ -246,6 +247,21 @@ async def stock_fundamentals(symbol: str) -> dict[str, Any]:
         er = await finnhub.earnings_for_symbol(sym)
         if er and er.get("date"):
             out["next_earnings"] = er["date"]
+    except Exception:
+        pass
+    try:
+        history = await finnhub.recent_earnings(sym, limit=1)
+        if history:
+            latest = history[0]
+            out["last_earnings"] = {
+                "period": latest.get("period"),
+                "quarter": latest.get("quarter"),
+                "year": latest.get("year"),
+                "eps_actual": latest.get("actual"),
+                "eps_estimate": latest.get("estimate"),
+                "surprise": latest.get("surprise"),
+                "surprise_percent": latest.get("surprisePercent"),
+            }
     except Exception:
         pass
     try:
