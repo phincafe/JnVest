@@ -195,53 +195,6 @@ export type AlpacaOrder = {
   filled_avg_price: string | null;
 };
 
-export type PlaidItem = {
-  id: number;
-  item_id: string;
-  institution_id: string | null;
-  institution_name: string | null;
-  created_at: string;
-};
-
-export type PlaidHolding = {
-  ticker: string | null;
-  name: string | null;
-  type: string | null;
-  account_name: string | null;
-  account_subtype: string | null;
-  quantity: number;
-  price: number;
-  cost_basis_per_share: number | null;
-  market_value: number;
-  cost_basis_total: number | null;
-  unrealized_pl: number | null;
-  unrealized_pl_pct: number | null;
-};
-
-export type PlaidAccount = {
-  name: string | null;
-  subtype: string | null;
-  balance: number;
-};
-
-export type PlaidItemHoldings = {
-  id: number;
-  institution_name: string | null;
-  error?: string;
-  holdings: PlaidHolding[];
-  accounts: PlaidAccount[];
-};
-
-export type PlaidHoldingsResponse = {
-  items: PlaidItemHoldings[];
-  totals: {
-    market_value: number;
-    cost_basis: number;
-    unrealized_pl: number | null;
-    unrealized_pl_pct: number | null;
-  };
-};
-
 export type SnapTradeAccount = {
   id: string;
   name: string;

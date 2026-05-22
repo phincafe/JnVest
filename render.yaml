@@ -13,8 +13,12 @@ services:
     region: oregon
     branch: main
     rootDir: .
+    # uv resolves + installs the heavy Python deps (pandas/numpy/snaptrade/etc.)
+    # in roughly a third of the time pip takes, which is the dominant cost on
+    # Render's free build infra.
     buildCommand: |
-      cd backend && pip install -e .
+      pip install --no-cache-dir uv
+      cd backend && uv pip install --system --no-cache -e .
       cd ../frontend && npm ci && npm run build
     startCommand: |
       cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
@@ -46,9 +50,3 @@ services:
         sync: false
       - key: SNAPTRADE_CONSUMER_KEY
         sync: false
-      - key: PLAID_CLIENT_ID
-        sync: false
-      - key: PLAID_SECRET
-        sync: false
-      - key: PLAID_ENV
-        value: sandbox
