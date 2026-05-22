@@ -22,6 +22,9 @@ type SliceDetail = {
   value?: number;
   /** Owner-only: number of contracts (option positions). */
   qty?: number;
+  /** When set, the detail row becomes clickable — opens the P/L modal for
+   * the specific contract. */
+  onClick?: () => void;
 };
 
 /** Compact $ formatter for legend lines: $12.3K / $1.2M. Falls back to plain
@@ -157,11 +160,14 @@ export function GuestPortfolioView({
       const strike = o.strike != null ? `$${o.strike}` : "?";
       const exp = o.expiration ?? "";
       const list = out.get(k) ?? [];
+      const canCalc = !!o.underlying && !!o.expiration && o.strike != null;
       list.push({
         label: `${strike}${typeChar} ${exp}`.trim(),
         pct: total ? (w / total) * 100 : 0,
         value: ownerMode ? o.market_value : undefined,
         qty: ownerMode ? o.quantity : undefined,
+        onClick:
+          canCalc && onSelectOption ? () => onSelectOption(o) : undefined,
       });
       out.set(k, list);
     }
@@ -169,7 +175,7 @@ export function GuestPortfolioView({
       list.sort((a, b) => (b.value ?? b.pct) - (a.value ?? a.pct));
     }
     return out;
-  }, [holdings.options, ownerMode]);
+  }, [holdings.options, ownerMode, onSelectOption]);
 
   // Aggregate $ totals so card subtitles can show real dollar amounts (owner only).
   const stocksValue = ownerMode
@@ -610,7 +616,14 @@ function CategoryCard({
           </div>
           <ul className="space-y-1 text-xs">
             {activeDetails.map((d, i) => (
-              <li key={i} className="flex items-baseline justify-between gap-3">
+              <li
+                key={i}
+                onClick={d.onClick}
+                className={`flex items-baseline justify-between gap-3 rounded px-1 -mx-1 ${
+                  d.onClick ? "cursor-pointer hover:bg-(--color-panel)" : ""
+                }`}
+                title={d.onClick ? "Open projected P/L" : undefined}
+              >
                 <span className="flex min-w-0 items-baseline gap-2">
                   <span className="truncate">{d.label}</span>
                   {showValues && d.qty != null && (
