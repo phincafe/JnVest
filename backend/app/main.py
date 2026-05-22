@@ -13,6 +13,7 @@ from .config import get_settings
 from .db import Base, SessionLocal, engine
 from .models import WatchlistTicker
 from .routers import (
+    bot,
     buy_watch,
     calendar,
     market,
@@ -23,6 +24,7 @@ from .routers import (
     watchlist,
 )
 from .services import streamer
+from .services.bot import runner as bot_runner
 
 DEFAULT_WATCHLIST = ["AAPL", "NVDA", "TSLA", "SPY", "QQQ"]
 
@@ -42,7 +44,19 @@ def _seed_watchlist() -> None:
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
     _seed_watchlist()
-    yield
+    # Background bot loop. The runner itself checks BotState.running every
+    # tick and no-ops while disabled, so it's cheap to leave running.
+    import asyncio
+
+    task = asyncio.create_task(bot_runner.loop())
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
 
 
 app = FastAPI(title="JnVest API", lifespan=lifespan)
@@ -149,6 +163,7 @@ app.include_router(positions.router, prefix="/api")
 # removed from the UI. Restore by re-adding `app.include_router(orders.router, prefix="/api")`.
 app.include_router(snaptrade.router, prefix="/api")
 app.include_router(buy_watch.router, prefix="/api")
+app.include_router(bot.router, prefix="/api")
 
 
 @app.websocket("/api/ws")
