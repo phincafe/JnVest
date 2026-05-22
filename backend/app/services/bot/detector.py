@@ -77,6 +77,8 @@ def detect(
     swing_width: int = 2,
     lookback: int = 30,
     min_bars_between: int = 3,
+    min_rsi_gap: float = 0.0,
+    min_price_gap_pct: float = 0.0,
 ) -> Signal | None:
     """Scan the most recent `lookback` bars for an RSI-vs-price divergence.
 
@@ -89,6 +91,14 @@ def detect(
 
     `min_bars_between` = require at least this many bars between the prior
     and current swing points so we don't compare neighbours.
+
+    `min_rsi_gap` = require |current_rsi - prior_rsi| ≥ this (RSI points).
+    Defaults to 0 (any gap counts). Higher values filter out weak divergences
+    where the RSI barely moved; commonly 3-8 in practice.
+
+    `min_price_gap_pct` = require |current_price - prior_price| / prior_price
+    × 100 ≥ this percent. Defaults to 0. Filters out trivial swings that are
+    visually divergent but not material moves.
     """
     if len(bars) < max(rsi_period + 5, lookback):
         return None
@@ -113,14 +123,17 @@ def detect(
             and lows[curr] < lows[prior]
             and curr_rsi > prior_rsi
         ):
-            return Signal(
-                side="call",
-                index=curr,
-                prior_extreme_price=lows[prior],
-                current_extreme_price=lows[curr],
-                prior_extreme_rsi=prior_rsi,
-                current_extreme_rsi=curr_rsi,
-            )
+            rsi_gap = curr_rsi - prior_rsi
+            price_gap_pct = abs(lows[curr] - lows[prior]) / lows[prior] * 100 if lows[prior] else 0
+            if rsi_gap >= min_rsi_gap and price_gap_pct >= min_price_gap_pct:
+                return Signal(
+                    side="call",
+                    index=curr,
+                    prior_extreme_price=lows[prior],
+                    current_extreme_price=lows[curr],
+                    prior_extreme_rsi=prior_rsi,
+                    current_extreme_rsi=curr_rsi,
+                )
 
     # ---- Bearish divergence: higher high in price, lower high in RSI ----
     high_idxs = [i for i in _find_local_highs(highs, swing_width) if i >= window_start]
@@ -134,13 +147,18 @@ def detect(
             and highs[curr] > highs[prior]
             and curr_rsi < prior_rsi
         ):
-            return Signal(
-                side="put",
-                index=curr,
-                prior_extreme_price=highs[prior],
-                current_extreme_price=highs[curr],
-                prior_extreme_rsi=prior_rsi,
-                current_extreme_rsi=curr_rsi,
+            rsi_gap = prior_rsi - curr_rsi
+            price_gap_pct = (
+                abs(highs[curr] - highs[prior]) / highs[prior] * 100 if highs[prior] else 0
             )
+            if rsi_gap >= min_rsi_gap and price_gap_pct >= min_price_gap_pct:
+                return Signal(
+                    side="put",
+                    index=curr,
+                    prior_extreme_price=highs[prior],
+                    current_extreme_price=highs[curr],
+                    prior_extreme_rsi=prior_rsi,
+                    current_extreme_rsi=curr_rsi,
+                )
 
     return None

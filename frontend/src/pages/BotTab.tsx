@@ -404,18 +404,73 @@ function formatRelative(d: Date): string {
  * NB: simulated option marks use a fixed 15% IV — directionally useful,
  * not precise. Banner reminds the user.
  */
+type BacktestConfig = {
+  swing_width: number;
+  min_bars_between: number;
+  min_rsi_gap: number;
+  min_price_gap_pct: number;
+  tp_pct: number;
+  sl_pct: number;
+  entry_start_et: string;
+  entry_end_et: string;
+};
+
+const DEFAULT_CFG: BacktestConfig = {
+  swing_width: 2,
+  min_bars_between: 3,
+  min_rsi_gap: 0,
+  min_price_gap_pct: 0,
+  tp_pct: 0.2,
+  sl_pct: 0.2,
+  entry_start_et: "09:30",
+  entry_end_et: "15:30",
+};
+
+const CFG_LS_KEY = "jnvest:bot:backtest_cfg";
+
+function loadCfg(): BacktestConfig {
+  try {
+    const raw = localStorage.getItem(CFG_LS_KEY);
+    if (!raw) return DEFAULT_CFG;
+    return { ...DEFAULT_CFG, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULT_CFG;
+  }
+}
+
 function BacktestPanel() {
   const [days, setDays] = useState(30);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<BotBacktestResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [cfg, setCfg] = useState<BacktestConfig>(loadCfg);
+  const [showSettings, setShowSettings] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CFG_LS_KEY, JSON.stringify(cfg));
+    } catch {
+      /* ignore */
+    }
+  }, [cfg]);
 
   const run = async () => {
     setBusy(true);
     setErr(null);
     setResult(null);
     try {
-      const r = await api.post<BotBacktestResponse>(`/bot/backtest?days=${days}`);
+      const q = new URLSearchParams({
+        days: String(days),
+        swing_width: String(cfg.swing_width),
+        min_bars_between: String(cfg.min_bars_between),
+        min_rsi_gap: String(cfg.min_rsi_gap),
+        min_price_gap_pct: String(cfg.min_price_gap_pct),
+        tp_pct: String(cfg.tp_pct),
+        sl_pct: String(cfg.sl_pct),
+        entry_start_et: cfg.entry_start_et,
+        entry_end_et: cfg.entry_end_et,
+      });
+      const r = await api.post<BotBacktestResponse>(`/bot/backtest?${q}`);
       setResult(r);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Backtest failed");
@@ -423,6 +478,14 @@ function BacktestPanel() {
       setBusy(false);
     }
   };
+
+  const updateCfg = <K extends keyof BacktestConfig>(
+    k: K,
+    v: BacktestConfig[K],
+  ) => setCfg((p) => ({ ...p, [k]: v }));
+  const resetCfg = () => setCfg(DEFAULT_CFG);
+  const isDefault =
+    JSON.stringify(cfg) === JSON.stringify(DEFAULT_CFG);
 
   return (
     <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
@@ -449,6 +512,17 @@ function BacktestPanel() {
           </label>
           <button
             type="button"
+            onClick={() => setShowSettings((s) => !s)}
+            className="rounded-md border border-(--color-border) px-2 py-1 text-xs text-(--color-text-dim) hover:text-(--color-text)"
+            title="Tune detector + exit parameters"
+          >
+            {showSettings ? "Hide settings" : `Settings${isDefault ? "" : " ·"}`}
+            {!isDefault && (
+              <span className="ml-0.5 text-(--color-accent)">●</span>
+            )}
+          </button>
+          <button
+            type="button"
             onClick={run}
             disabled={busy}
             className="rounded-md bg-(--color-accent) px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
@@ -457,6 +531,10 @@ function BacktestPanel() {
           </button>
         </div>
       </header>
+
+      {showSettings && (
+        <SettingsPanel cfg={cfg} onChange={updateCfg} onReset={resetCfg} />
+      )}
 
       {err && (
         <div className="rounded-md border border-(--color-down)/50 bg-(--color-down)/10 px-3 py-2 text-sm text-(--color-down)">
@@ -587,5 +665,153 @@ function BTStat({
       </div>
       <div className={`text-sm tabular-nums ${toneClass}`}>{value}</div>
     </div>
+  );
+}
+
+function SettingsPanel({
+  cfg,
+  onChange,
+  onReset,
+}: {
+  cfg: BacktestConfig;
+  onChange: <K extends keyof BacktestConfig>(k: K, v: BacktestConfig[K]) => void;
+  onReset: () => void;
+}) {
+  return (
+    <div className="mb-3 rounded-md border border-(--color-border) bg-(--color-panel-2) p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-[10px] uppercase tracking-wide text-(--color-text-dim)">
+          Detector settings · persist in browser
+        </span>
+        <button
+          type="button"
+          onClick={onReset}
+          className="text-[10px] uppercase tracking-wide text-(--color-text-dim) hover:text-(--color-text)"
+        >
+          Reset
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+        <CfgField
+          label="Min RSI gap"
+          help="Reject divergences where |RSI_curr − RSI_prior| is below this. Try 3-8 to filter weak signals."
+          value={cfg.min_rsi_gap}
+          step={0.5}
+          onChange={(v) => onChange("min_rsi_gap", v)}
+        />
+        <CfgField
+          label="Min price gap %"
+          help="Reject swings where price moved less than this percent. Try 0.1-0.5."
+          value={cfg.min_price_gap_pct}
+          step={0.05}
+          onChange={(v) => onChange("min_price_gap_pct", v)}
+        />
+        <CfgField
+          label="Min bars between"
+          help="Minimum bar count between the prior swing and the current one. Higher = require sustained moves."
+          value={cfg.min_bars_between}
+          step={1}
+          int
+          onChange={(v) => onChange("min_bars_between", v)}
+        />
+        <CfgField
+          label="Swing width"
+          help="A point is a swing only if it's the highest/lowest of `2×width + 1` consecutive bars."
+          value={cfg.swing_width}
+          step={1}
+          int
+          onChange={(v) => onChange("swing_width", v)}
+        />
+        <CfgField
+          label="TP %"
+          help="Take-profit threshold on the option mark, as a fraction (0.20 = +20%)."
+          value={cfg.tp_pct}
+          step={0.05}
+          onChange={(v) => onChange("tp_pct", v)}
+        />
+        <CfgField
+          label="SL %"
+          help="Stop-loss threshold on the option mark, as a fraction (0.20 = -20%)."
+          value={cfg.sl_pct}
+          step={0.05}
+          onChange={(v) => onChange("sl_pct", v)}
+        />
+        <CfgTimeField
+          label="Entry from (ET)"
+          help="No new entries before this time. Try 10:00 to skip opening volatility."
+          value={cfg.entry_start_et}
+          onChange={(v) => onChange("entry_start_et", v)}
+        />
+        <CfgTimeField
+          label="Entry until (ET)"
+          help="No new entries after this time. Position monitor still exits at 15:30 regardless."
+          value={cfg.entry_end_et}
+          onChange={(v) => onChange("entry_end_et", v)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function CfgField({
+  label,
+  help,
+  value,
+  onChange,
+  step = 0.1,
+  int = false,
+}: {
+  label: string;
+  help: string;
+  value: number;
+  onChange: (v: number) => void;
+  step?: number;
+  int?: boolean;
+}) {
+  return (
+    <label className="flex flex-col gap-1" title={help}>
+      <span className="text-[10px] uppercase tracking-wide text-(--color-text-dim)">
+        {label}
+      </span>
+      <input
+        type="number"
+        step={step}
+        value={value}
+        onChange={(e) => {
+          const n = int
+            ? parseInt(e.target.value, 10)
+            : parseFloat(e.target.value);
+          if (Number.isFinite(n)) onChange(n);
+        }}
+        className="w-full rounded-md border border-(--color-border) bg-(--color-panel) px-2 py-1 text-right tabular-nums focus:outline-none"
+      />
+    </label>
+  );
+}
+
+function CfgTimeField({
+  label,
+  help,
+  value,
+  onChange,
+}: {
+  label: string;
+  help: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="flex flex-col gap-1" title={help}>
+      <span className="text-[10px] uppercase tracking-wide text-(--color-text-dim)">
+        {label}
+      </span>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="HH:MM"
+        className="w-full rounded-md border border-(--color-border) bg-(--color-panel) px-2 py-1 text-right tabular-nums focus:outline-none"
+      />
+    </label>
   );
 }

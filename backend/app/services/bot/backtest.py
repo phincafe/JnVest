@@ -21,12 +21,37 @@ from ..blackscholes import price as bs_price
 from .detector import Bar, detect
 
 ASSUMED_IV = 0.15  # fixed; user chose this over realized-vol per-bar.
-TP_PCT = 0.20
-SL_PCT = 0.20
 DAILY_LOSS_CAP_PCT = 0.05  # mirror of safety.py
 RISK_PCT = 0.02
 STARTING_EQUITY = 10_000.0  # synthetic for sizing math during the backtest
 MIN_BARS = 50  # same as runner — need RSI warmup + swing room
+
+
+@dataclass
+class BacktestConfig:
+    """All tunable knobs for a single backtest run. Same defaults as the
+    live bot. UI exposes these so the user can A/B different selectivity
+    filters without code changes."""
+
+    # Detector filters
+    swing_width: int = 2
+    min_bars_between: int = 3
+    min_rsi_gap: float = 0.0
+    min_price_gap_pct: float = 0.0
+    # Exits (percent on option mark)
+    tp_pct: float = 0.20
+    sl_pct: float = 0.20
+    # Entry window (ET, "HH:MM"). Live bot uses 09:30-15:30.
+    entry_start_et: str = "09:30"
+    entry_end_et: str = "15:30"
+
+
+def _parse_hhmm(s: str) -> time:
+    parts = s.split(":")
+    try:
+        return time(int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
+    except (ValueError, IndexError):
+        return time(0, 0)
 
 
 @dataclass
@@ -65,11 +90,15 @@ def _is_past_time_stop_et(bar_ts: datetime) -> bool:
     return et_time >= time(15, 30)
 
 
-async def run_backtest(days: int) -> BacktestResult:
+async def run_backtest(days: int, config: BacktestConfig | None = None) -> BacktestResult:
     """Fetch the last `days` calendar days of SPY 5m bars and simulate trades.
 
-    Returns a dict-friendly result. Caller wraps in a Pydantic response.
+    `config` controls the detector + exit knobs. None = library defaults
+    (same as the live bot). Returns a dict-friendly result.
     """
+    cfg = config or BacktestConfig()
+    entry_start = _parse_hhmm(cfg.entry_start_et)
+    entry_end = _parse_hhmm(cfg.entry_end_et)
     days = max(1, min(days, 90))  # cap to avoid runaway fetches
     start = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%dT00:00:00Z")
     try:
@@ -143,8 +172,8 @@ async def run_backtest(days: int) -> BacktestResult:
                 days_to_exp=days_remaining,
                 is_call=is_call,
             )
-            tp = open_trade.entry_mark * (1 + TP_PCT)
-            sl = open_trade.entry_mark * (1 - SL_PCT)
+            tp = open_trade.entry_mark * (1 + cfg.tp_pct)
+            sl = open_trade.entry_mark * (1 - cfg.sl_pct)
             reason: str | None = None
             if mark >= tp:
                 reason = "tp"
@@ -185,11 +214,17 @@ async def run_backtest(days: int) -> BacktestResult:
             continue
         et_hour = (bar_ts.hour - 4) % 24
         et_time = time(et_hour, bar_ts.minute, bar_ts.second)
-        if not (time(9, 30) <= et_time <= time(15, 30)):
+        if not (entry_start <= et_time <= entry_end):
             continue
 
         # --- 3. Run the detector on bars up to and including the current bar. ---
-        sig = detect(bars[: i + 1])
+        sig = detect(
+            bars[: i + 1],
+            swing_width=cfg.swing_width,
+            min_bars_between=cfg.min_bars_between,
+            min_rsi_gap=cfg.min_rsi_gap,
+            min_price_gap_pct=cfg.min_price_gap_pct,
+        )
         if sig is None or sig.index <= last_signal_idx:
             continue
         last_signal_idx = sig.index
@@ -214,7 +249,7 @@ async def run_backtest(days: int) -> BacktestResult:
         if entry_mark <= 0.05:
             continue
         # Sizing — same risk-based formula the live bot uses.
-        loss_per_contract = entry_mark * 100.0 * SL_PCT
+        loss_per_contract = entry_mark * 100.0 * cfg.sl_pct
         if loss_per_contract <= 0:
             continue
         raw_qty = (RISK_PCT * equity) / loss_per_contract
@@ -298,6 +333,7 @@ async def run_backtest(days: int) -> BacktestResult:
         "max_drawdown": round(max_dd, 2),
         "max_drawdown_pct": round(max_dd / STARTING_EQUITY * 100.0, 2),
         "assumed_iv": ASSUMED_IV,
+        "config": asdict(cfg),
     }
     return BacktestResult(
         days_requested=days,
