@@ -189,7 +189,7 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 px-4 pt-[8vh] backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 pt-[8vh] pb-[8vh] backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       onClick={onClose}
