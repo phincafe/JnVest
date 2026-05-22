@@ -500,3 +500,43 @@ export type StockFundamentals = {
   analyst_recommendation: AnalystRecommendation | null;
   last_earnings: LastEarnings | null;
 };
+
+// --- Bot (SPY 0-DTE RSI-divergence) -----------------------------------------
+export type BotStatus = {
+  running: boolean;
+  last_tick: string | null; // ISO
+  day_date: string | null; // YYYY-MM-DD UTC
+  day_pnl: number;
+  daily_loss_cap_hit: boolean;
+  is_paper: boolean;
+  open_position_exists: boolean;
+};
+
+export type BotSignalRow = {
+  id: number;
+  detected_at: string;
+  side: "call" | "put";
+  spot: number;
+  prior_extreme_price: number;
+  current_extreme_price: number;
+  prior_extreme_rsi: number;
+  current_extreme_rsi: number;
+  trade_id: number | null;
+  skip_reason: string | null;
+};
+
+export type BotTradeRow = {
+  id: number;
+  signal_id: number | null;
+  occ_symbol: string;
+  side: "call" | "put";
+  qty: number;
+  entry_at: string;
+  entry_price: number;
+  tp_price: number;
+  sl_price: number;
+  exit_at: string | null;
+  exit_price: number | null;
+  exit_reason: "tp" | "sl" | "time" | "manual" | null;
+  realized_pnl: number | null;
+};
