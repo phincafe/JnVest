@@ -502,9 +502,14 @@ function PnLHeatmap({
   // and 120d expirations (≈2d steps for short, ≈9d for long).
   const N_COLS = 14;
   const N_ROWS = 30;
+  // Spot range as a fraction of center price (max of spot, strike). Default
+  // ±15% covers most ATM-ish plays; wider presets let the user see deeper OTM
+  // moves (useful for far-OTM options where the interesting region is outside
+  // the default window).
+  const [rangePct, setRangePct] = useState(0.15);
   const center = Math.max(spot, strike);
-  const lo = center * 0.85;
-  const hi = center * 1.15;
+  const lo = center * (1 - rangePct);
+  const hi = center * (1 + rangePct);
 
   const rows = useMemo(() => {
     const out: number[] = [];
@@ -560,8 +565,38 @@ function PnLHeatmap({
   const fmtDateHeader = (d: Date): string =>
     d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
+  const RANGE_PRESETS: { label: string; value: number }[] = [
+    { label: "±15%", value: 0.15 },
+    { label: "±25%", value: 0.25 },
+    { label: "±40%", value: 0.4 },
+    { label: "±60%", value: 0.6 },
+  ];
+
   return (
-    <div className="w-full overflow-x-auto rounded-md border border-(--color-border)">
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 text-[11px]">
+        <span className="text-(--color-text-dim)">Spot range</span>
+        <div className="inline-flex rounded-md border border-(--color-border) bg-(--color-panel-2) p-0.5">
+          {RANGE_PRESETS.map((p) => (
+            <button
+              key={p.value}
+              type="button"
+              onClick={() => setRangePct(p.value)}
+              className={`rounded px-2 py-0.5 transition-colors ${
+                rangePct === p.value
+                  ? "bg-(--color-accent) text-white"
+                  : "text-(--color-text-dim) hover:text-(--color-text)"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <span className="text-(--color-text-dim)">
+          ${lo.toFixed(2)} – ${hi.toFixed(2)}
+        </span>
+      </div>
+      <div className="w-full overflow-x-auto rounded-md border border-(--color-border)">
       <table className="w-full border-collapse text-[10px] tabular-nums">
         <thead>
           <tr className="bg-(--color-panel-2)">
@@ -640,6 +675,7 @@ function PnLHeatmap({
         Spot ≈ ${spot.toFixed(2)} · Expires {expiration} · Cells show P/L
         {isGuest ? " (% of premium)" : " ($)"}. Right column is % return at
         expiration.
+      </div>
       </div>
     </div>
   );
