@@ -20,6 +20,10 @@ import { Skeleton } from "./Skeleton";
 type Props = {
   option: SnapTradeOption | null;
   onClose: () => void;
+  /** Guest mode: hide $ amounts. Y-axis, tooltip, and stats become % of
+   * premium paid; the X-axis (stock price) stays in $ since it's a public
+   * market price, not the user's position. */
+  isGuest?: boolean;
 };
 
 type ChartPoint = {
@@ -29,7 +33,7 @@ type ChartPoint = {
   expiry: number;
 };
 
-export function OptionPnLModal({ option, onClose }: Props) {
+export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
   const [chain, setChain] = useState<ChainResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -166,6 +170,20 @@ export function OptionPnLModal({ option, onClose }: Props) {
 
   const showHalfLine = daysToExp != null && daysToExp >= 3;
 
+  // Cost basis in $ — used to express P/L as a % of premium when isGuest hides
+  // raw $ amounts. abs() so the formula works for short positions too (qty < 0).
+  const costBasis =
+    option.avg_cost != null
+      ? Math.abs(option.quantity * option.avg_cost * 100)
+      : null;
+  const fmtPnL = (n: number) => {
+    if (isGuest && costBasis) {
+      const pct = (n / costBasis) * 100;
+      return `${pct >= 0 ? "+" : "-"}${Math.abs(pct).toFixed(0)}%`;
+    }
+    return `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(0)}`;
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 px-4 pt-[8vh] backdrop-blur-sm"
@@ -213,6 +231,8 @@ export function OptionPnLModal({ option, onClose }: Props) {
             breakeven={breakeven}
             qty={option.quantity}
             avgCost={option.avg_cost}
+            spot={spot}
+            isGuest={isGuest}
           />
 
           {err && (
@@ -246,9 +266,7 @@ export function OptionPnLModal({ option, onClose }: Props) {
                     fontSize={11}
                   />
                   <YAxis
-                    tickFormatter={(v) =>
-                      `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(0)}`
-                    }
+                    tickFormatter={(v) => fmtPnL(v)}
                     stroke="var(--color-text-dim)"
                     fontSize={11}
                   />
@@ -267,7 +285,7 @@ export function OptionPnLModal({ option, onClose }: Props) {
                         : `Spot $${s.toFixed(2)}`;
                     }}
                     formatter={(value: number, name: string) => [
-                      `${value >= 0 ? "+" : "-"}$${Math.abs(value).toFixed(0)}`,
+                      fmtPnL(value),
                       name,
                     ]}
                   />
@@ -415,41 +433,71 @@ function StatsRow({
   breakeven,
   qty,
   avgCost,
+  spot,
+  isGuest,
 }: {
   currentPL: number | null;
   currentPLPct: number | null;
   breakeven: number | null;
   qty: number;
   avgCost: number | null;
+  spot: number | null;
+  isGuest: boolean;
 }) {
   const isLong = qty > 0;
   // Long: max loss = premium paid. Short: max profit = premium collected,
   // max loss is undefined for naked positions (∞ for calls, strike*100 for puts).
   const premium = avgCost != null ? avgCost * 100 * Math.abs(qty) : null;
   const maxLossLabel = isLong ? "Max loss" : "Max profit";
+
+  // Current P/L: drop the $ in guest mode — the % already conveys the change.
+  const currentPLValue =
+    currentPL == null
+      ? "—"
+      : isGuest
+        ? currentPLPct != null
+          ? `${currentPLPct >= 0 ? "+" : ""}${currentPLPct.toFixed(1)}%`
+          : "—"
+        : `${currentPL >= 0 ? "+" : "-"}$${fmtPrice(Math.abs(currentPL))}`;
+  const currentPLSub =
+    isGuest || currentPLPct == null
+      ? null
+      : `${currentPLPct >= 0 ? "+" : ""}${currentPLPct.toFixed(1)}%`;
+
+  // Breakeven: render as % distance from current spot in guest mode so the
+  // raw price doesn't leak the user's strike via subtraction.
+  const breakevenValue =
+    breakeven == null
+      ? "—"
+      : isGuest && spot && spot > 0
+        ? (() => {
+            const pct = ((breakeven - spot) / spot) * 100;
+            return `${pct >= 0 ? "+" : "-"}${Math.abs(pct).toFixed(1)}%`;
+          })()
+        : `$${fmtPrice(breakeven)}`;
+  const breakevenSub = isGuest ? "from spot" : null;
+
+  // Max loss / profit: for guest, it's always 100% of premium for the long
+  // side and the short side's premium collected. Just say "100%".
+  const maxLossValue =
+    premium == null
+      ? "—"
+      : isGuest
+        ? "100%"
+        : `$${fmtPrice(premium)}`;
+
   return (
     <div className="mb-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
       <Stat
         label="Current P/L"
-        value={
-          currentPL != null
-            ? `${currentPL >= 0 ? "+" : "-"}$${fmtPrice(Math.abs(currentPL))}`
-            : "—"
-        }
-        sub={
-          currentPLPct != null
-            ? `${currentPLPct >= 0 ? "+" : ""}${currentPLPct.toFixed(1)}%`
-            : null
-        }
+        value={currentPLValue}
+        sub={currentPLSub}
         tone={currentPL == null ? "dim" : currentPL >= 0 ? "up" : "down"}
       />
-      <Stat
-        label="Breakeven"
-        value={breakeven != null ? `$${fmtPrice(breakeven)}` : "—"}
-      />
+      <Stat label="Breakeven" value={breakevenValue} sub={breakevenSub} />
       <Stat
         label={maxLossLabel}
-        value={premium != null ? `$${fmtPrice(premium)}` : "—"}
+        value={maxLossValue}
         sub={isLong ? "premium paid" : "premium collected"}
       />
       <Stat
