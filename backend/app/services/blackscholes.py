@@ -22,6 +22,35 @@ def _d1(S: float, K: float, r: float, q: float, sigma: float, T: float) -> float
     return (log(S / K) + (r - q + 0.5 * sigma * sigma) * T) / (sigma * sqrt(T))
 
 
+def price(
+    spot: float,
+    strike: float,
+    iv: float,
+    days_to_exp: float,
+    is_call: bool,
+    risk_free: float = 0.05,
+    dividend_yield: float = 0.0,
+) -> float:
+    """Black-Scholes-Merton call/put price. Mirror of frontend/src/lib/
+    blackScholes.ts so the bot's backtest engine can simulate option marks
+    from historical underlying bars. Returns intrinsic at T=0."""
+    if days_to_exp <= 0:
+        return max(0.0, spot - strike) if is_call else max(0.0, strike - spot)
+    if spot <= 0 or strike <= 0 or iv <= 0:
+        return 0.0
+    T = days_to_exp / DAYS_PER_YEAR
+    sqrt_t = sqrt(T)
+    d1 = _d1(spot, strike, risk_free, dividend_yield, iv, T)
+    d2 = d1 - iv * sqrt_t
+    if is_call:
+        return spot * exp(-dividend_yield * T) * _norm_cdf(d1) - strike * exp(
+            -risk_free * T
+        ) * _norm_cdf(d2)
+    return strike * exp(-risk_free * T) * _norm_cdf(-d2) - spot * exp(
+        -dividend_yield * T
+    ) * _norm_cdf(-d1)
+
+
 def greeks(
     spot: float,
     strike: float,

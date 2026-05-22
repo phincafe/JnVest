@@ -6,9 +6,14 @@
  * the state stays fresh, and refreshes signals/trades on the same beat.
  */
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Pause, Play, RefreshCcw } from "lucide-react";
+import { AlertTriangle, FlaskConical, Pause, Play, RefreshCcw } from "lucide-react";
 import { api, ApiError } from "../api/client";
-import type { BotSignalRow, BotStatus, BotTradeRow } from "../api/types";
+import type {
+  BotBacktestResponse,
+  BotSignalRow,
+  BotStatus,
+  BotTradeRow,
+} from "../api/types";
 import { Skeleton } from "../components/Skeleton";
 import { changeClass, fmtPrice } from "../lib/format";
 
@@ -111,6 +116,8 @@ export default function BotTab({ refreshNonce }: { refreshNonce: number }) {
         <TradesPanel trades={trades} />
         <SignalsPanel signals={signals} />
       </div>
+
+      <BacktestPanel />
 
       <p className="text-[11px] text-(--color-text-dim)">
         Strategy: RSI(14) divergence on SPY 5-minute bars → buy 0-DTE ATM call
@@ -388,4 +395,197 @@ function formatRelative(d: Date): string {
   if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
   if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
   return d.toLocaleDateString();
+}
+
+/** Backtest the strategy on historical SPY 5m bars. POSTs to
+ * /api/bot/backtest and renders the summary stats + a scrollable trade
+ * table. ~10-30s round-trip; shows a loading state.
+ *
+ * NB: simulated option marks use a fixed 15% IV — directionally useful,
+ * not precise. Banner reminds the user.
+ */
+function BacktestPanel() {
+  const [days, setDays] = useState(30);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<BotBacktestResponse | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const run = async () => {
+    setBusy(true);
+    setErr(null);
+    setResult(null);
+    try {
+      const r = await api.post<BotBacktestResponse>(`/bot/backtest?days=${days}`);
+      setResult(r);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Backtest failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
+      <header className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <FlaskConical size={16} className="text-(--color-accent)" />
+          <h3 className="text-sm font-medium">Backtest</h3>
+          <span className="text-[10px] text-(--color-text-dim)">
+            simulated, 15% IV — directional only
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <label className="flex items-center gap-1.5 text-(--color-text-dim)">
+            Days
+            <input
+              type="number"
+              min={1}
+              max={90}
+              value={days}
+              onChange={(e) => setDays(Math.max(1, Math.min(90, Number(e.target.value) || 0)))}
+              disabled={busy}
+              className="w-16 rounded-md border border-(--color-border) bg-(--color-panel-2) px-2 py-1 text-right tabular-nums focus:outline-none disabled:opacity-50"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={run}
+            disabled={busy}
+            className="rounded-md bg-(--color-accent) px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+          >
+            {busy ? "Running…" : "Run backtest"}
+          </button>
+        </div>
+      </header>
+
+      {err && (
+        <div className="rounded-md border border-(--color-down)/50 bg-(--color-down)/10 px-3 py-2 text-sm text-(--color-down)">
+          {err}
+        </div>
+      )}
+
+      {busy && (
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-24 w-full" />
+        </div>
+      )}
+
+      {result && result.summary.error && (
+        <div className="text-sm text-(--color-down)">
+          Backtest error: {result.summary.error}
+        </div>
+      )}
+
+      {result && !result.summary.error && (
+        <>
+          <div className="mb-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4 lg:grid-cols-7">
+            <BTStat
+              label="Trades"
+              value={String(result.summary.trade_count)}
+            />
+            <BTStat
+              label="Win rate"
+              value={`${result.summary.win_rate_pct}%`}
+              tone={result.summary.win_rate_pct >= 50 ? "up" : "down"}
+            />
+            <BTStat
+              label="Total P/L"
+              value={`${result.summary.total_pnl >= 0 ? "+" : "-"}$${fmtPrice(Math.abs(result.summary.total_pnl))}`}
+              tone={result.summary.total_pnl >= 0 ? "up" : "down"}
+            />
+            <BTStat
+              label="Return"
+              value={`${result.summary.total_pnl_pct >= 0 ? "+" : ""}${result.summary.total_pnl_pct}%`}
+              tone={result.summary.total_pnl_pct >= 0 ? "up" : "down"}
+            />
+            <BTStat
+              label="Avg win"
+              value={`+$${fmtPrice(result.summary.avg_win)}`}
+              tone="up"
+            />
+            <BTStat
+              label="Avg loss"
+              value={`-$${fmtPrice(Math.abs(result.summary.avg_loss))}`}
+              tone="down"
+            />
+            <BTStat
+              label="Max DD"
+              value={`-$${fmtPrice(result.summary.max_drawdown)} (${result.summary.max_drawdown_pct}%)`}
+              tone="down"
+            />
+          </div>
+          <div className="text-[10px] text-(--color-text-dim)">
+            {result.bars_loaded} bars over {result.days_requested}d ·
+            starting equity ${fmtPrice(result.summary.starting_equity, 0)} ·
+            assumed IV {(result.summary.assumed_iv * 100).toFixed(0)}%
+          </div>
+          {result.trades.length > 0 && (
+            <div className="mt-3 max-h-72 overflow-auto">
+              <table className="w-full text-xs">
+                <thead className="text-(--color-text-dim)">
+                  <tr>
+                    <th className="text-left font-normal">Entry</th>
+                    <th className="text-left font-normal">Side</th>
+                    <th className="text-right font-normal">Strike</th>
+                    <th className="text-right font-normal">Qty</th>
+                    <th className="text-right font-normal">Entry $</th>
+                    <th className="text-right font-normal">Exit $</th>
+                    <th className="text-right font-normal">Reason</th>
+                    <th className="text-right font-normal">P/L</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.trades.map((t, i) => (
+                    <tr
+                      key={i}
+                      className="border-t border-(--color-border) tabular-nums"
+                    >
+                      <td className="py-1">{fmtTime(t.entry_ts)}</td>
+                      <td className="py-1 capitalize">{t.side}</td>
+                      <td className="py-1 text-right">${t.strike}</td>
+                      <td className="py-1 text-right">{t.qty}</td>
+                      <td className="py-1 text-right">${fmtPrice(t.entry_mark)}</td>
+                      <td className="py-1 text-right">${fmtPrice(t.exit_mark)}</td>
+                      <td className="py-1 text-right text-(--color-text-dim)">
+                        {t.exit_reason}
+                      </td>
+                      <td className={`py-1 text-right ${changeClass(t.pnl)}`}>
+                        {t.pnl >= 0 ? "+" : "-"}${fmtPrice(Math.abs(t.pnl))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function BTStat({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  tone?: "default" | "up" | "down";
+}) {
+  const toneClass =
+    tone === "up"
+      ? "text-(--color-up)"
+      : tone === "down"
+        ? "text-(--color-down)"
+        : "";
+  return (
+    <div className="rounded-md border border-(--color-border) bg-(--color-panel-2) px-2 py-1.5">
+      <div className="text-[9px] uppercase tracking-wide text-(--color-text-dim)">
+        {label}
+      </div>
+      <div className={`text-sm tabular-nums ${toneClass}`}>{value}</div>
+    </div>
+  );
 }
