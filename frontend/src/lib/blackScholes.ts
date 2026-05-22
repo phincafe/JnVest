@@ -52,6 +52,34 @@ export function bsPrice(
   );
 }
 
+/** Solve for implied volatility given a target market price via bisection.
+ * Bisection is overkill speed-wise but bulletproof — no derivatives, no
+ * convergence quirks. Returns null if the target price is outside the
+ * achievable range (e.g. below intrinsic, or a stale quote). */
+export function impliedVol(
+  marketPrice: number,
+  spot: number,
+  strike: number,
+  daysToExp: number,
+  isCall: boolean,
+): number | null {
+  if (marketPrice <= 0 || spot <= 0 || strike <= 0 || daysToExp <= 0) return null;
+  const intrinsic = isCall
+    ? Math.max(0, spot - strike)
+    : Math.max(0, strike - spot);
+  if (marketPrice < intrinsic - 0.05) return null; // below intrinsic = bad data
+  let lo = 0.001;
+  let hi = 5.0;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    const p = bsPrice(spot, strike, mid, daysToExp, isCall);
+    if (Math.abs(p - marketPrice) < 0.005) return mid;
+    if (p < marketPrice) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
 /** P/L in dollars for a single option position at a future spot + days-to-exp.
  * `qty` is signed (positive = long, negative = short). 100-share contract. */
 export function optionPnL(args: {

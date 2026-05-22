@@ -14,7 +14,7 @@ import {
 import { api, ApiError } from "../api/client";
 import type { ChainResponse, OptionRow, SnapTradeOption } from "../api/types";
 import { fmtPrice } from "../lib/format";
-import { optionPnL } from "../lib/blackScholes";
+import { impliedVol, optionPnL } from "../lib/blackScholes";
 import { Skeleton } from "./Skeleton";
 
 type Props = {
@@ -81,9 +81,34 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
     return rows.find((r) => Math.abs(r.strike - strike) < 1e-6) ?? null;
   }, [chain, option, isCall]);
 
-  const iv = matchedRow?.iv ?? null;
+  const chainIv = matchedRow?.iv ?? null;
   const spot = chain?.spot ?? null;
   const daysToExp = chain?.days_to_exp ?? null;
+
+  // yfinance chain IV can be stale or wildly off for thin strikes — when the
+  // broker reports a current per-share mark (option.price), back the IV out
+  // of that mark so today's heatmap cells line up with the Current P/L card.
+  // Falls back to the chain IV if the option has no current price.
+  const iv: number | null = useMemo(() => {
+    if (
+      option &&
+      option.price > 0 &&
+      option.strike != null &&
+      spot != null &&
+      daysToExp != null
+    ) {
+      const isCallNow = (option.option_type ?? "").toLowerCase() === "call";
+      const solved = impliedVol(
+        option.price,
+        spot,
+        option.strike,
+        daysToExp,
+        isCallNow,
+      );
+      if (solved != null && solved > 0) return solved;
+    }
+    return chainIv;
+  }, [option, spot, daysToExp, chainIv]);
 
   // The backend strips quantity + avg_cost from options in public/guest mode
   // (those are private). Fall back to a synthetic baseline so the projection
