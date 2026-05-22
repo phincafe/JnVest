@@ -17,7 +17,6 @@ from .routers import (
     calendar,
     market,
     options,
-    plaid,
     positions,
     snaptrade,
     stock,
@@ -136,7 +135,6 @@ async def health() -> dict:
         "snaptrade_configured": bool(
             settings.snaptrade_client_id and settings.snaptrade_consumer_key
         ),
-        "plaid_configured": bool(settings.plaid_client_id and settings.plaid_secret),
         "db": "postgres" if settings.database_url.startswith("postgres") else "sqlite",
     }
 
@@ -149,7 +147,6 @@ app.include_router(calendar.router, prefix="/api")
 app.include_router(positions.router, prefix="/api")
 # orders.router is intentionally not mounted: paper-trading order ticket was
 # removed from the UI. Restore by re-adding `app.include_router(orders.router, prefix="/api")`.
-app.include_router(plaid.router, prefix="/api")
 app.include_router(snaptrade.router, prefix="/api")
 app.include_router(buy_watch.router, prefix="/api")
 

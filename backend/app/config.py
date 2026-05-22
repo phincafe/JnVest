@@ -28,11 +28,6 @@ class Settings(BaseSettings):
     finnhub_api_key: str = ""
     fred_api_key: str = ""
 
-    # Plaid Investments — sign up at https://dashboard.plaid.com
-    plaid_client_id: str = ""
-    plaid_secret: str = ""
-    plaid_env: str = "sandbox"  # sandbox | production
-
     # SnapTrade — sign up at https://dashboard.snaptrade.com (free tier: 5 connections)
     snaptrade_client_id: str = ""
     snaptrade_consumer_key: str = ""
