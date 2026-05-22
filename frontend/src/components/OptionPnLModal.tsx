@@ -665,9 +665,19 @@ function PnLHeatmap({
                           : `${fmtDateHeader(cols[ci].date)}: ${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(0)} (${fmtSignedPct(pctOfPremium(v))})`
                       }
                     >
-                      {isGuest
-                        ? fmtPnL(v)
-                        : `${v >= 0 ? "" : "-"}${Math.abs(v).toFixed(0)}`}
+                      {isGuest ? (
+                        fmtPnL(v)
+                      ) : (
+                        <div className="flex flex-col items-end leading-tight">
+                          <span>
+                            {v >= 0 ? "" : "-"}
+                            {Math.abs(v).toFixed(0)}
+                          </span>
+                          <span className="text-[9px] opacity-70">
+                            {fmtSignedPct(pctOfPremium(v))}
+                          </span>
+                        </div>
+                      )}
                     </td>
                   );
                 })}
