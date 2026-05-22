@@ -502,14 +502,13 @@ function PnLHeatmap({
   // and 120d expirations (≈2d steps for short, ≈9d for long).
   const N_COLS = 14;
   const N_ROWS = 30;
-  // Spot range as a fraction of center price (max of spot, strike). Default
-  // ±15% covers most ATM-ish plays; wider presets let the user see deeper OTM
-  // moves (useful for far-OTM options where the interesting region is outside
-  // the default window).
+  // Spot range. Default ±15% covers most ATM-ish plays; wider presets let the
+  // user see deeper OTM moves. Range is anchored to BOTH spot and strike so
+  // the user always sees the interesting region — using a single center
+  // (max of the two) misses the spot entirely for far-OTM calls.
   const [rangePct, setRangePct] = useState(0.15);
-  const center = Math.max(spot, strike);
-  const lo = center * (1 - rangePct);
-  const hi = center * (1 + rangePct);
+  const lo = Math.min(spot, strike) * (1 - rangePct);
+  const hi = Math.max(spot, strike) * (1 + rangePct);
 
   const rows = useMemo(() => {
     const out: number[] = [];
