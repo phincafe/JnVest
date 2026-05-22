@@ -581,3 +581,15 @@ export type BotBacktestResponse = {
   summary: BotBacktestSummary;
   trades: BotBacktestTrade[];
 };
+
+export type BotBacktestShockSlice = {
+  iv: number;
+  bars_loaded: number;
+  trade_count: number;
+  summary: BotBacktestSummary;
+};
+
+export type BotBacktestShockResponse = {
+  days_requested: number;
+  slices: BotBacktestShockSlice[];
+};

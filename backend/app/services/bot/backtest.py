@@ -20,7 +20,6 @@ from .. import alpaca
 from ..blackscholes import price as bs_price
 from .detector import Bar, detect
 
-ASSUMED_IV = 0.15  # fixed; user chose this over realized-vol per-bar.
 DAILY_LOSS_CAP_PCT = 0.05  # mirror of safety.py
 RISK_PCT = 0.02
 STARTING_EQUITY = 10_000.0  # synthetic for sizing math during the backtest
@@ -44,6 +43,11 @@ class BacktestConfig:
     # Entry window (ET, "HH:MM"). Live bot uses 09:30-15:30.
     entry_start_et: str = "09:30"
     entry_end_et: str = "15:30"
+    # IV assumption used to simulate option marks. Real 0-DTE SPY ATM IV is
+    # usually 12-20% on calm days, 25-40%+ when divergence-firing volatility
+    # spikes. The IV-shock endpoint runs three values side-by-side to expose
+    # how IV-fragile a config is.
+    assumed_iv: float = 0.15
 
 
 def _parse_hhmm(s: str) -> time:
@@ -168,7 +172,7 @@ async def run_backtest(days: int, config: BacktestConfig | None = None) -> Backt
             mark = bs_price(
                 spot=bars[i].close,
                 strike=open_trade.strike,
-                iv=ASSUMED_IV,
+                iv=cfg.assumed_iv,
                 days_to_exp=days_remaining,
                 is_call=is_call,
             )
@@ -242,7 +246,7 @@ async def run_backtest(days: int, config: BacktestConfig | None = None) -> Backt
         entry_mark = bs_price(
             spot=spot_at_entry,
             strike=strike,
-            iv=ASSUMED_IV,
+            iv=cfg.assumed_iv,
             days_to_exp=days_remaining,
             is_call=is_call,
         )
@@ -281,7 +285,7 @@ async def run_backtest(days: int, config: BacktestConfig | None = None) -> Backt
         mark = bs_price(
             spot=bars[i].close,
             strike=open_trade.strike,
-            iv=ASSUMED_IV,
+            iv=cfg.assumed_iv,
             days_to_exp=days_remaining,
             is_call=is_call,
         )
@@ -332,7 +336,7 @@ async def run_backtest(days: int, config: BacktestConfig | None = None) -> Backt
         "avg_loss": round(sum(t.pnl for t in losses) / len(losses), 2) if losses else 0.0,
         "max_drawdown": round(max_dd, 2),
         "max_drawdown_pct": round(max_dd / STARTING_EQUITY * 100.0, 2),
-        "assumed_iv": ASSUMED_IV,
+        "assumed_iv": cfg.assumed_iv,
         "config": asdict(cfg),
     }
     return BacktestResult(
@@ -341,3 +345,50 @@ async def run_backtest(days: int, config: BacktestConfig | None = None) -> Backt
         trades=[asdict(t) for t in trades],
         summary=summary,
     )
+
+
+@dataclass
+class IvShockSlice:
+    """One row in the IV-shock comparison: a complete backtest result at
+    one IV level."""
+
+    iv: float
+    days_requested: int
+    bars_loaded: int
+    summary: dict
+    trade_count: int
+
+
+async def run_iv_shock(
+    days: int,
+    config: BacktestConfig | None = None,
+    iv_levels: tuple[float, ...] = (0.15, 0.25, 0.35),
+) -> list[IvShockSlice]:
+    """Run the backtest at each IV level and return side-by-side results.
+
+    Parallelised — each backtest fetches the same SPY bars (Alpaca's response
+    is cached for 60s in the alpaca service), so this is roughly as fast as
+    a single backtest. The trade lists are dropped from each slice; only the
+    summary stats are kept (the side-by-side UI doesn't render per-trade
+    details, and the JSON would be heavy).
+    """
+    import asyncio
+
+    base_cfg = config or BacktestConfig()
+    cfgs = [
+        BacktestConfig(
+            **{**asdict(base_cfg), "assumed_iv": iv},
+        )
+        for iv in iv_levels
+    ]
+    results = await asyncio.gather(*(run_backtest(days, c) for c in cfgs))
+    return [
+        IvShockSlice(
+            iv=cfgs[i].assumed_iv,
+            days_requested=results[i].days_requested,
+            bars_loaded=results[i].bars_loaded,
+            summary=results[i].summary,
+            trade_count=len(results[i].trades),
+        )
+        for i in range(len(results))
+    ]

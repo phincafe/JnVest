@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..models import BotSignal, BotState, BotTrade
 from ..services.bot import safety
-from ..services.bot.backtest import BacktestConfig, run_backtest
+from ..services.bot.backtest import BacktestConfig, run_backtest, run_iv_shock
 
 router = APIRouter(prefix="/bot", tags=["bot"])
 
@@ -111,6 +111,30 @@ def signals(
     ]
 
 
+def _cfg_from_query(
+    swing_width: int,
+    min_bars_between: int,
+    min_rsi_gap: float,
+    min_price_gap_pct: float,
+    tp_pct: float,
+    sl_pct: float,
+    entry_start_et: str,
+    entry_end_et: str,
+    assumed_iv: float,
+) -> BacktestConfig:
+    return BacktestConfig(
+        swing_width=swing_width,
+        min_bars_between=min_bars_between,
+        min_rsi_gap=min_rsi_gap,
+        min_price_gap_pct=min_price_gap_pct,
+        tp_pct=tp_pct,
+        sl_pct=sl_pct,
+        entry_start_et=entry_start_et,
+        entry_end_et=entry_end_et,
+        assumed_iv=assumed_iv,
+    )
+
+
 @router.post("/backtest")
 async def backtest(
     request: Request,
@@ -123,21 +147,23 @@ async def backtest(
     sl_pct: float = 0.20,
     entry_start_et: str = "09:30",
     entry_end_et: str = "15:30",
+    assumed_iv: float = 0.15,
 ) -> dict[str, Any]:
     """Simulate the strategy over the last N days of SPY 5m bars with the
     given config knobs. Heavy — POST so it shows up clearly in network
     panels and isn't accidentally cache-fetched by a browser refresh.
     ~10-30s for 30 days."""
     _require_owner(request)
-    cfg = BacktestConfig(
-        swing_width=swing_width,
-        min_bars_between=min_bars_between,
-        min_rsi_gap=min_rsi_gap,
-        min_price_gap_pct=min_price_gap_pct,
-        tp_pct=tp_pct,
-        sl_pct=sl_pct,
-        entry_start_et=entry_start_et,
-        entry_end_et=entry_end_et,
+    cfg = _cfg_from_query(
+        swing_width,
+        min_bars_between,
+        min_rsi_gap,
+        min_price_gap_pct,
+        tp_pct,
+        sl_pct,
+        entry_start_et,
+        entry_end_et,
+        assumed_iv,
     )
     result = await run_backtest(days, cfg)
     return {
@@ -145,6 +171,49 @@ async def backtest(
         "bars_loaded": result.bars_loaded,
         "summary": result.summary,
         "trades": result.trades,
+    }
+
+
+@router.post("/backtest/shock")
+async def backtest_shock(
+    request: Request,
+    days: int = 30,
+    swing_width: int = 2,
+    min_bars_between: int = 3,
+    min_rsi_gap: float = 0.0,
+    min_price_gap_pct: float = 0.0,
+    tp_pct: float = 0.20,
+    sl_pct: float = 0.20,
+    entry_start_et: str = "09:30",
+    entry_end_et: str = "15:30",
+) -> dict[str, Any]:
+    """Run the backtest at three IV levels (15% / 25% / 35%) so the user
+    can see whether the strategy survives volatility changes. Same config
+    knobs as /backtest; assumed_iv is overridden per-slice."""
+    _require_owner(request)
+    base = _cfg_from_query(
+        swing_width,
+        min_bars_between,
+        min_rsi_gap,
+        min_price_gap_pct,
+        tp_pct,
+        sl_pct,
+        entry_start_et,
+        entry_end_et,
+        0.15,  # placeholder; overridden inside run_iv_shock
+    )
+    slices = await run_iv_shock(days, base)
+    return {
+        "days_requested": days,
+        "slices": [
+            {
+                "iv": s.iv,
+                "bars_loaded": s.bars_loaded,
+                "trade_count": s.trade_count,
+                "summary": s.summary,
+            }
+            for s in slices
+        ],
     }
 
 

@@ -10,6 +10,7 @@ import { AlertTriangle, FlaskConical, Pause, Play, RefreshCcw } from "lucide-rea
 import { api, ApiError } from "../api/client";
 import type {
   BotBacktestResponse,
+  BotBacktestShockResponse,
   BotSignalRow,
   BotStatus,
   BotTradeRow,
@@ -413,6 +414,7 @@ type BacktestConfig = {
   sl_pct: number;
   entry_start_et: string;
   entry_end_et: string;
+  assumed_iv: number;
 };
 
 const DEFAULT_CFG: BacktestConfig = {
@@ -424,6 +426,7 @@ const DEFAULT_CFG: BacktestConfig = {
   sl_pct: 0.2,
   entry_start_et: "09:30",
   entry_end_et: "15:30",
+  assumed_iv: 0.15,
 };
 
 const CFG_LS_KEY = "jnvest:bot:backtest_cfg";
@@ -441,7 +444,9 @@ function loadCfg(): BacktestConfig {
 function BacktestPanel() {
   const [days, setDays] = useState(30);
   const [busy, setBusy] = useState(false);
+  const [busyShock, setBusyShock] = useState(false);
   const [result, setResult] = useState<BotBacktestResponse | null>(null);
+  const [shock, setShock] = useState<BotBacktestShockResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [cfg, setCfg] = useState<BacktestConfig>(loadCfg);
   const [showSettings, setShowSettings] = useState(false);
@@ -454,28 +459,50 @@ function BacktestPanel() {
     }
   }, [cfg]);
 
+  const buildQuery = () =>
+    new URLSearchParams({
+      days: String(days),
+      swing_width: String(cfg.swing_width),
+      min_bars_between: String(cfg.min_bars_between),
+      min_rsi_gap: String(cfg.min_rsi_gap),
+      min_price_gap_pct: String(cfg.min_price_gap_pct),
+      tp_pct: String(cfg.tp_pct),
+      sl_pct: String(cfg.sl_pct),
+      entry_start_et: cfg.entry_start_et,
+      entry_end_et: cfg.entry_end_et,
+    });
+
   const run = async () => {
     setBusy(true);
     setErr(null);
     setResult(null);
+    setShock(null);
     try {
-      const q = new URLSearchParams({
-        days: String(days),
-        swing_width: String(cfg.swing_width),
-        min_bars_between: String(cfg.min_bars_between),
-        min_rsi_gap: String(cfg.min_rsi_gap),
-        min_price_gap_pct: String(cfg.min_price_gap_pct),
-        tp_pct: String(cfg.tp_pct),
-        sl_pct: String(cfg.sl_pct),
-        entry_start_et: cfg.entry_start_et,
-        entry_end_et: cfg.entry_end_et,
-      });
+      const q = buildQuery();
+      q.set("assumed_iv", String(cfg.assumed_iv));
       const r = await api.post<BotBacktestResponse>(`/bot/backtest?${q}`);
       setResult(r);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Backtest failed");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const runShock = async () => {
+    setBusyShock(true);
+    setErr(null);
+    setResult(null);
+    setShock(null);
+    try {
+      const r = await api.post<BotBacktestShockResponse>(
+        `/bot/backtest/shock?${buildQuery()}`,
+      );
+      setShock(r);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Backtest failed");
+    } finally {
+      setBusyShock(false);
     }
   };
 
@@ -524,10 +551,19 @@ function BacktestPanel() {
           <button
             type="button"
             onClick={run}
-            disabled={busy}
+            disabled={busy || busyShock}
             className="rounded-md bg-(--color-accent) px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
           >
             {busy ? "Running…" : "Run backtest"}
+          </button>
+          <button
+            type="button"
+            onClick={runShock}
+            disabled={busy || busyShock}
+            title="Run at 15% / 25% / 35% IV side-by-side to see if the strategy is IV-fragile"
+            className="rounded-md border border-(--color-accent) px-3 py-1 text-xs font-medium text-(--color-accent) hover:bg-(--color-accent)/10 disabled:opacity-50"
+          >
+            {busyShock ? "Running…" : "IV shock test"}
           </button>
         </div>
       </header>
@@ -542,12 +578,14 @@ function BacktestPanel() {
         </div>
       )}
 
-      {busy && (
+      {(busy || busyShock) && (
         <div className="space-y-2">
           <Skeleton className="h-4 w-3/4" />
           <Skeleton className="h-24 w-full" />
         </div>
       )}
+
+      {shock && <ShockResults shock={shock} />}
 
       {result && result.summary.error && (
         <div className="text-sm text-(--color-down)">
@@ -736,6 +774,13 @@ function SettingsPanel({
           step={0.05}
           onChange={(v) => onChange("sl_pct", v)}
         />
+        <CfgField
+          label="Assumed IV"
+          help="IV used for option pricing in the single backtest. Real 0-DTE SPY ATM IV varies ~12-35%. The 'IV shock' button tests 15/25/35 side-by-side."
+          value={cfg.assumed_iv}
+          step={0.05}
+          onChange={(v) => onChange("assumed_iv", v)}
+        />
         <CfgTimeField
           label="Entry from (ET)"
           help="No new entries before this time. Try 10:00 to skip opening volatility."
@@ -813,5 +858,106 @@ function CfgTimeField({
         className="w-full rounded-md border border-(--color-border) bg-(--color-panel) px-2 py-1 text-right tabular-nums focus:outline-none"
       />
     </label>
+  );
+}
+
+/** Side-by-side comparison of the strategy at three IV levels. A strategy
+ * that's only profitable at the lowest IV is IV-fragile and probably won't
+ * survive live trading. */
+function ShockResults({ shock }: { shock: BotBacktestShockResponse }) {
+  const allProfitable = shock.slices.every((s) => s.summary.total_pnl > 0);
+  const noneProfitable = shock.slices.every((s) => s.summary.total_pnl <= 0);
+  const onlyLowProfitable =
+    shock.slices.length >= 2 &&
+    shock.slices[0].summary.total_pnl > 0 &&
+    shock.slices[shock.slices.length - 1].summary.total_pnl <= 0;
+  const verdict = allProfitable
+    ? { tone: "up" as const, text: "Robust — positive at all three IV levels." }
+    : noneProfitable
+      ? {
+          tone: "down" as const,
+          text: "No edge — negative at every IV level. Tweak config or pivot.",
+        }
+      : onlyLowProfitable
+        ? {
+            tone: "down" as const,
+            text:
+              "IV-fragile — profitable only at low IV. Real IV is usually higher when divergence fires; live performance likely negative.",
+          }
+        : {
+            tone: "dim" as const,
+            text: "Mixed results — read each column carefully.",
+          };
+  const verdictClass =
+    verdict.tone === "up"
+      ? "border-(--color-up)/50 bg-(--color-up)/10 text-(--color-up)"
+      : verdict.tone === "down"
+        ? "border-(--color-down)/50 bg-(--color-down)/10 text-(--color-down)"
+        : "border-(--color-border) bg-(--color-panel-2) text-(--color-text-dim)";
+  return (
+    <div className="mt-2 space-y-3">
+      <div className={`rounded-md border px-3 py-2 text-sm ${verdictClass}`}>
+        {verdict.text}
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {shock.slices.map((s) => {
+          const profitable = s.summary.total_pnl > 0;
+          return (
+            <div
+              key={s.iv}
+              className={`rounded-md border px-3 py-2 text-xs ${
+                profitable
+                  ? "border-(--color-up)/40 bg-(--color-up)/5"
+                  : "border-(--color-down)/40 bg-(--color-down)/5"
+              }`}
+            >
+              <div className="mb-2 flex items-baseline justify-between">
+                <span className="text-sm font-medium tabular-nums">
+                  IV {(s.iv * 100).toFixed(0)}%
+                </span>
+                <span
+                  className={`text-[10px] uppercase tracking-wide ${
+                    profitable
+                      ? "text-(--color-up)"
+                      : "text-(--color-down)"
+                  }`}
+                >
+                  {profitable ? "Profitable" : "Loss"}
+                </span>
+              </div>
+              <dl className="grid grid-cols-2 gap-x-3 gap-y-1 tabular-nums">
+                <dt className="text-(--color-text-dim)">Trades</dt>
+                <dd className="text-right">{s.summary.trade_count}</dd>
+                <dt className="text-(--color-text-dim)">Win rate</dt>
+                <dd className="text-right">{s.summary.win_rate_pct}%</dd>
+                <dt className="text-(--color-text-dim)">Total P/L</dt>
+                <dd
+                  className={`text-right ${changeClass(s.summary.total_pnl)}`}
+                >
+                  {s.summary.total_pnl >= 0 ? "+" : "-"}$
+                  {fmtPrice(Math.abs(s.summary.total_pnl))}
+                </dd>
+                <dt className="text-(--color-text-dim)">Return</dt>
+                <dd
+                  className={`text-right ${changeClass(s.summary.total_pnl_pct)}`}
+                >
+                  {s.summary.total_pnl_pct >= 0 ? "+" : ""}
+                  {s.summary.total_pnl_pct}%
+                </dd>
+                <dt className="text-(--color-text-dim)">Max DD</dt>
+                <dd className="text-right text-(--color-down)">
+                  -${fmtPrice(s.summary.max_drawdown)} ({s.summary.max_drawdown_pct}%)
+                </dd>
+              </dl>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-(--color-text-dim)">
+        Same config, three IV assumptions. A robust strategy stays positive
+        across all three. If only the 15% column is positive, it's IV-fragile
+        — real live IV is usually higher when divergence fires.
+      </p>
+    </div>
   );
 }
