@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..models import BotSignal, BotState, BotTrade
 from ..services.bot import safety
-from ..services.bot.backtest import run_backtest
+from ..services.bot.backtest import BacktestConfig, run_backtest
 
 router = APIRouter(prefix="/bot", tags=["bot"])
 
@@ -112,12 +112,34 @@ def signals(
 
 
 @router.post("/backtest")
-async def backtest(request: Request, days: int = 30) -> dict[str, Any]:
-    """Simulate the strategy over the last N days of SPY 5m bars. Heavy —
-    POST so it shows up clearly in network panels and isn't accidentally
-    cache-fetched by a browser refresh. ~10-30s for 30 days."""
+async def backtest(
+    request: Request,
+    days: int = 30,
+    swing_width: int = 2,
+    min_bars_between: int = 3,
+    min_rsi_gap: float = 0.0,
+    min_price_gap_pct: float = 0.0,
+    tp_pct: float = 0.20,
+    sl_pct: float = 0.20,
+    entry_start_et: str = "09:30",
+    entry_end_et: str = "15:30",
+) -> dict[str, Any]:
+    """Simulate the strategy over the last N days of SPY 5m bars with the
+    given config knobs. Heavy — POST so it shows up clearly in network
+    panels and isn't accidentally cache-fetched by a browser refresh.
+    ~10-30s for 30 days."""
     _require_owner(request)
-    result = await run_backtest(days)
+    cfg = BacktestConfig(
+        swing_width=swing_width,
+        min_bars_between=min_bars_between,
+        min_rsi_gap=min_rsi_gap,
+        min_price_gap_pct=min_price_gap_pct,
+        tp_pct=tp_pct,
+        sl_pct=sl_pct,
+        entry_start_et=entry_start_et,
+        entry_end_et=entry_end_et,
+    )
+    result = await run_backtest(days, cfg)
     return {
         "days_requested": result.days_requested,
         "bars_loaded": result.bars_loaded,
