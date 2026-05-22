@@ -562,6 +562,15 @@ function PnLHeatmap({
     return ((intrinsic - avgCost) / avgCost) * 100;
   };
 
+  // Cost basis in $ — used to convert each cell's P/L into % of premium for
+  // the hover tooltip (owner mode shows both $ and %; guest mode is already
+  // % only, so we only append it for owner).
+  const costBasis = Math.abs(qty * avgCost * 100);
+  const pctOfPremium = (pnl: number): number =>
+    costBasis > 0 ? (pnl / costBasis) * 100 : 0;
+  const fmtSignedPct = (p: number): string =>
+    `${p >= 0 ? "+" : "-"}${Math.abs(p).toFixed(1)}%`;
+
   const fmtDateHeader = (d: Date): string =>
     d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
@@ -650,7 +659,11 @@ function PnLHeatmap({
                           ? "border-l border-(--color-border)"
                           : ""
                       }`}
-                      title={`${fmtDateHeader(cols[ci].date)}: ${fmtPnL(v)}`}
+                      title={
+                        isGuest
+                          ? `${fmtDateHeader(cols[ci].date)}: ${fmtPnL(v)}`
+                          : `${fmtDateHeader(cols[ci].date)}: ${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(0)} (${fmtSignedPct(pctOfPremium(v))})`
+                      }
                     >
                       {isGuest
                         ? fmtPnL(v)
