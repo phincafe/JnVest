@@ -85,6 +85,26 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
   const spot = chain?.spot ?? null;
   const daysToExp = chain?.days_to_exp ?? null;
 
+  // The backend strips quantity + avg_cost from options in public/guest mode
+  // (those are private). Fall back to a synthetic baseline so the projection
+  // still works — 1 contract at the current chain mid. The header surfaces
+  // this so guests understand the values are illustrative, not their position.
+  const chainMark: number | null = useMemo(() => {
+    if (!matchedRow) return null;
+    if (matchedRow.last && matchedRow.last > 0) return matchedRow.last;
+    if (matchedRow.bid > 0 && matchedRow.ask > 0) {
+      return (matchedRow.bid + matchedRow.ask) / 2;
+    }
+    return null;
+  }, [matchedRow]);
+  const isSyntheticPosition =
+    !!option && (option.avg_cost == null || !Number.isFinite(option.quantity));
+  const effectiveAvgCost = option?.avg_cost ?? chainMark;
+  const effectiveQty =
+    option && Number.isFinite(option.quantity) && option.quantity !== 0
+      ? option.quantity
+      : 1;
+
   const ready =
     !!option &&
     iv != null &&
@@ -94,7 +114,8 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
     daysToExp != null &&
     daysToExp > 0 &&
     option.strike != null &&
-    option.avg_cost != null;
+    effectiveAvgCost != null &&
+    effectiveAvgCost > 0;
 
   const chartData: ChartPoint[] = useMemo(() => {
     if (
@@ -104,13 +125,13 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
       daysToExp == null ||
       iv == null ||
       option.strike == null ||
-      option.avg_cost == null
+      effectiveAvgCost == null
     ) {
       return [];
     }
     const strike = option.strike;
-    const avgCost = option.avg_cost;
-    const qty = option.quantity;
+    const avgCost = effectiveAvgCost;
+    const qty = effectiveQty;
     // X range: symmetric ±35% around max(spot, strike). Wide enough to cover
     // far-OTM options without the chart clipping the interesting region.
     const center = Math.max(spot, strike);
@@ -157,7 +178,7 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
       });
     }
     return pts;
-  }, [ready, spot, daysToExp, iv, isCall, option]);
+  }, [ready, spot, daysToExp, iv, isCall, option, effectiveAvgCost, effectiveQty]);
 
   if (!option) return null;
 
@@ -165,10 +186,10 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
   // but the side of the curve that's profitable flips). For ATM-ish strikes
   // this is just strike ± premium.
   const breakeven =
-    option.strike != null && option.avg_cost != null
+    option.strike != null && effectiveAvgCost != null
       ? isCall
-        ? option.strike + option.avg_cost
-        : option.strike - option.avg_cost
+        ? option.strike + effectiveAvgCost
+        : option.strike - effectiveAvgCost
       : null;
 
   const showHalfLine = daysToExp != null && daysToExp >= 3;
@@ -176,8 +197,8 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
   // Cost basis in $ — used to express P/L as a % of premium when isGuest hides
   // raw $ amounts. abs() so the formula works for short positions too (qty < 0).
   const costBasis =
-    option.avg_cost != null
-      ? Math.abs(option.quantity * option.avg_cost * 100)
+    effectiveAvgCost != null
+      ? Math.abs(effectiveQty * effectiveAvgCost * 100)
       : null;
   const fmtPnL = (n: number) => {
     if (isGuest && costBasis) {
@@ -210,8 +231,17 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
               </span>
             </div>
             <div className="mt-1 text-xs text-(--color-text-dim)">
-              {option.quantity > 0 ? "Long" : "Short"} {Math.abs(option.quantity)} @ $
-              {option.avg_cost != null ? fmtPrice(option.avg_cost) : "—"}
+              {isSyntheticPosition ? (
+                <span className="rounded bg-(--color-accent)/15 px-1.5 py-0.5 text-(--color-accent)">
+                  Public view · 1 contract @ current mark
+                </span>
+              ) : (
+                <>
+                  {effectiveQty > 0 ? "Long" : "Short"} {Math.abs(effectiveQty)} @
+                  {" "}$
+                  {effectiveAvgCost != null ? fmtPrice(effectiveAvgCost) : "—"}
+                </>
+              )}
               {iv != null && ` · IV ${(iv * 100).toFixed(1)}%`}
               {daysToExp != null && ` · ${Math.round(daysToExp)}d to expiry`}
               {spot != null && ` · spot $${fmtPrice(spot)}`}
@@ -229,11 +259,11 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
 
         <div className="p-5">
           <StatsRow
-            currentPL={option.unrealized_pl}
-            currentPLPct={option.unrealized_pl_pct}
+            currentPL={isSyntheticPosition ? null : option.unrealized_pl}
+            currentPLPct={isSyntheticPosition ? null : option.unrealized_pl_pct}
             breakeven={breakeven}
-            qty={option.quantity}
-            avgCost={option.avg_cost}
+            qty={effectiveQty}
+            avgCost={effectiveAvgCost}
             spot={spot}
             isGuest={isGuest}
           />
@@ -387,15 +417,15 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
             </div>
           )}
 
-          {ready && view === "heatmap" && spot != null && daysToExp != null && iv != null && option.strike != null && option.avg_cost != null && (
+          {ready && view === "heatmap" && spot != null && daysToExp != null && iv != null && option.strike != null && effectiveAvgCost != null && (
             <PnLHeatmap
               spot={spot}
               strike={option.strike}
               iv={iv}
               daysToExp={daysToExp}
               isCall={isCall}
-              qty={option.quantity}
-              avgCost={option.avg_cost}
+              qty={effectiveQty}
+              avgCost={effectiveAvgCost}
               expiration={option.expiration ?? ""}
               isGuest={isGuest}
               fmtPnL={fmtPnL}
