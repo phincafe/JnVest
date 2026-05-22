@@ -1,5 +1,5 @@
-import { Suspense, useCallback, useEffect, useState } from "react";
-import { Briefcase, CalendarDays, LineChart, Sun } from "lucide-react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Bot, Briefcase, CalendarDays, LineChart, Sun } from "lucide-react";
 import { api } from "./api/client";
 import type { AuthStatus, WatchlistTicker } from "./api/types";
 import { CommandPalette } from "./components/CommandPalette";
@@ -17,13 +17,18 @@ const MorningTab = lazyWithReload(() => import("./pages/MorningTab"));
 const WatchlistTab = lazyWithReload(() => import("./pages/WatchlistTab"));
 const PortfolioTab = lazyWithReload(() => import("./pages/PortfolioTab"));
 const CalendarTab = lazyWithReload(() => import("./pages/CalendarTab"));
+const BotTab = lazyWithReload(() => import("./pages/BotTab"));
 
-const TABS: TabDef[] = [
+const BASE_TABS: TabDef[] = [
   { id: "morning", label: "Morning", icon: Sun },
   { id: "watchlist", label: "Watchlist", icon: LineChart },
   { id: "portfolio", label: "Portfolio", icon: Briefcase },
   { id: "calendar", label: "Calendar", icon: CalendarDays },
 ];
+// Owner-only: trading bot dashboard. Bot is a real-money-adjacent feature
+// (paper orders), so we hide the tab entirely from guests rather than
+// showing it disabled.
+const OWNER_TABS: TabDef[] = [{ id: "bot", label: "Bot", icon: Bot }];
 
 export function App() {
   const [role, setRole] = useState<"owner" | "guest">("guest");
@@ -38,6 +43,11 @@ export function App() {
   const [loginOpen, setLoginOpen] = useState(false);
   const [requestedSymbol, setRequestedSymbol] = useState<string | null>(null);
   const [watchlistSymbols, setWatchlistSymbols] = useState<string[]>([]);
+
+  const tabs = useMemo(
+    () => (role === "owner" ? [...BASE_TABS, ...OWNER_TABS] : BASE_TABS),
+    [role],
+  );
 
   const refreshAuth = useCallback(async () => {
     try {
@@ -60,6 +70,13 @@ export function App() {
       window.history.replaceState(null, "", `#${active}`);
     }
   }, [active]);
+
+  // If auth resolves and the user landed on a tab they don't have access to
+  // (e.g. a guest with #bot in the URL), bounce to morning.
+  useEffect(() => {
+    if (!authReady) return;
+    if (!tabs.some((t) => t.id === active)) setActive("morning");
+  }, [authReady, tabs, active]);
 
   // Pull watchlist symbols so cmd+K palette has suggestions (works for guests too).
   useEffect(() => {
@@ -115,7 +132,7 @@ export function App() {
         onSearch={() => setPaletteOpen(true)}
         role={role}
       />
-      <Tabs tabs={TABS} active={active} onChange={setActive} />
+      <Tabs tabs={tabs} active={active} onChange={setActive} />
 
       <ErrorBoundary key={active}>
         <Suspense fallback={<TabSkeleton />}>
@@ -137,6 +154,9 @@ export function App() {
             />
           )}
           {active === "calendar" && <CalendarTab refreshNonce={refreshNonce} />}
+          {active === "bot" && role === "owner" && (
+            <BotTab refreshNonce={refreshNonce} />
+          )}
         </Suspense>
       </ErrorBoundary>
 
@@ -152,7 +172,7 @@ export function App() {
         </footer>
       )}
 
-      <MobileTabBar tabs={TABS} active={active} onChange={setActive} />
+      <MobileTabBar tabs={tabs} active={active} onChange={setActive} />
 
       <CommandPalette
         open={paletteOpen}
