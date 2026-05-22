@@ -540,3 +540,44 @@ export type BotTradeRow = {
   exit_reason: "tp" | "sl" | "time" | "manual" | null;
   realized_pnl: number | null;
 };
+
+// --- Bot backtest -----------------------------------------------------------
+export type BotBacktestSummary = {
+  starting_equity: number;
+  ending_equity: number;
+  total_pnl: number;
+  total_pnl_pct: number;
+  trade_count: number;
+  wins: number;
+  losses: number;
+  win_rate_pct: number;
+  avg_win: number;
+  avg_loss: number;
+  max_drawdown: number;
+  max_drawdown_pct: number;
+  assumed_iv: number;
+  error?: string;
+};
+
+export type BotBacktestTrade = {
+  entry_idx: number;
+  entry_ts: string;
+  side: "call" | "put";
+  spot_at_entry: number;
+  strike: number;
+  qty: number;
+  entry_mark: number;
+  exit_idx: number;
+  exit_ts: string;
+  spot_at_exit: number;
+  exit_mark: number;
+  exit_reason: "tp" | "sl" | "time";
+  pnl: number;
+};
+
+export type BotBacktestResponse = {
+  days_requested: number;
+  bars_loaded: number;
+  summary: BotBacktestSummary;
+  trades: BotBacktestTrade[];
+};

@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..models import BotSignal, BotState, BotTrade
 from ..services.bot import safety
+from ..services.bot.backtest import run_backtest
 
 router = APIRouter(prefix="/bot", tags=["bot"])
 
@@ -108,6 +109,21 @@ def signals(
         }
         for r in rows
     ]
+
+
+@router.post("/backtest")
+async def backtest(request: Request, days: int = 30) -> dict[str, Any]:
+    """Simulate the strategy over the last N days of SPY 5m bars. Heavy —
+    POST so it shows up clearly in network panels and isn't accidentally
+    cache-fetched by a browser refresh. ~10-30s for 30 days."""
+    _require_owner(request)
+    result = await run_backtest(days)
+    return {
+        "days_requested": result.days_requested,
+        "bars_loaded": result.bars_loaded,
+        "summary": result.summary,
+        "trades": result.trades,
+    }
 
 
 @router.get("/trades")
