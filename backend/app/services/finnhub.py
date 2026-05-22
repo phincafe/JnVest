@@ -193,9 +193,7 @@ async def recent_earnings(symbol: str, limit: int = 4) -> list[dict[str, Any]]:
                 return []
             return data[:limit]
 
-    return await cache.aget_or_set(
-        f"finnhub-er-history:{symbol}:{limit}", fetch, ttl_seconds=3600
-    )
+    return await cache.aget_or_set(f"finnhub-er-history:{symbol}:{limit}", fetch, ttl_seconds=3600)
 
 
 async def market_news(category: str = "general", limit: int = 30) -> list[dict[str, Any]]:
