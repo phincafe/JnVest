@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { X } from "lucide-react";
+import { LineChart as ChartIcon, Grid3x3, X } from "lucide-react";
 import {
   CartesianGrid,
   Legend,
@@ -33,9 +33,12 @@ type ChartPoint = {
   expiry: number;
 };
 
+type View = "chart" | "heatmap";
+
 export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
   const [chain, setChain] = useState<ChainResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [view, setView] = useState<View>("chart");
 
   // Close on Escape — matches the pattern used by LoginModal / CommandPalette.
   useEffect(() => {
@@ -192,7 +195,7 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-3xl rounded-xl border border-(--color-border) bg-(--color-panel) shadow-xl"
+        className={`w-full rounded-xl border border-(--color-border) bg-(--color-panel) shadow-xl ${view === "heatmap" ? "max-w-6xl" : "max-w-3xl"}`}
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-start justify-between gap-4 border-b border-(--color-border) px-5 py-4">
@@ -235,6 +238,21 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
             isGuest={isGuest}
           />
 
+          <div className="mb-4 inline-flex rounded-md border border-(--color-border) bg-(--color-panel-2) p-0.5 text-xs">
+            <ViewToggleBtn
+              active={view === "chart"}
+              onClick={() => setView("chart")}
+              icon={<ChartIcon size={13} />}
+              label="Chart"
+            />
+            <ViewToggleBtn
+              active={view === "heatmap"}
+              onClick={() => setView("heatmap")}
+              icon={<Grid3x3 size={13} />}
+              label="Heatmap"
+            />
+          </div>
+
           {err && (
             <div className="rounded-md border border-(--color-down)/50 bg-(--color-down)/10 px-3 py-2 text-sm text-(--color-down)">
               {err}
@@ -248,7 +266,7 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
             </div>
           )}
 
-          {ready && chartData.length > 0 && (
+          {ready && view === "chart" && chartData.length > 0 && (
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart
@@ -369,12 +387,229 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
             </div>
           )}
 
+          {ready && view === "heatmap" && spot != null && daysToExp != null && iv != null && option.strike != null && option.avg_cost != null && (
+            <PnLHeatmap
+              spot={spot}
+              strike={option.strike}
+              iv={iv}
+              daysToExp={daysToExp}
+              isCall={isCall}
+              qty={option.quantity}
+              avgCost={option.avg_cost}
+              expiration={option.expiration ?? ""}
+              isGuest={isGuest}
+              fmtPnL={fmtPnL}
+            />
+          )}
+
           <p className="mt-3 text-[11px] text-(--color-text-dim)">
             Projection uses Black-Scholes with a 5% risk-free rate, 0% dividend
             yield, and current IV held constant. Real P/L will differ as IV
             moves.
           </p>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ViewToggleBtn({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors ${
+        active
+          ? "bg-(--color-accent) text-white"
+          : "text-(--color-text-dim) hover:text-(--color-text)"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+/** 2D grid of P/L: rows = projected stock price, columns = dates from today
+ * through expiration. Each cell is the option's P/L at that (date, spot) pair
+ * via Black-Scholes; cells are colored green/red proportional to magnitude.
+ * Right column shows the cumulative % return at expiration for each row,
+ * mirroring optionsprofitcalculator.com. */
+function PnLHeatmap({
+  spot,
+  strike,
+  iv,
+  daysToExp,
+  isCall,
+  qty,
+  avgCost,
+  expiration,
+  isGuest,
+  fmtPnL,
+}: {
+  spot: number;
+  strike: number;
+  iv: number;
+  daysToExp: number;
+  isCall: boolean;
+  qty: number;
+  avgCost: number;
+  expiration: string;
+  isGuest: boolean;
+  fmtPnL: (n: number) => string;
+}) {
+  // Column count adapts to width: ~14 columns total works well for both 30d
+  // and 120d expirations (≈2d steps for short, ≈9d for long).
+  const N_COLS = 14;
+  const N_ROWS = 30;
+  const center = Math.max(spot, strike);
+  const lo = center * 0.85;
+  const hi = center * 1.15;
+
+  const rows = useMemo(() => {
+    const out: number[] = [];
+    const step = (hi - lo) / (N_ROWS - 1);
+    // Top of the grid = highest price (visually intuitive: up = price up)
+    for (let i = N_ROWS - 1; i >= 0; i--) out.push(lo + i * step);
+    return out;
+  }, [lo, hi]);
+
+  const cols = useMemo(() => {
+    const out: { daysFromNow: number; daysRemaining: number; date: Date }[] = [];
+    const today = new Date();
+    const step = daysToExp / (N_COLS - 1);
+    for (let i = 0; i < N_COLS; i++) {
+      const daysFromNow = i * step;
+      const date = new Date(today.getTime() + daysFromNow * 86400_000);
+      out.push({
+        daysFromNow,
+        daysRemaining: Math.max(0, daysToExp - daysFromNow),
+        date,
+      });
+    }
+    return out;
+  }, [daysToExp]);
+
+  // Build the value grid + track absMax for color normalization.
+  const grid = useMemo(() => {
+    let absMax = 0;
+    const cells: number[][] = rows.map((rowPrice) =>
+      cols.map((col) => {
+        const pnl = optionPnL({
+          spot: rowPrice,
+          strike,
+          iv,
+          daysToExp: col.daysRemaining,
+          isCall,
+          qty,
+          avgCost,
+        });
+        if (Math.abs(pnl) > absMax) absMax = Math.abs(pnl);
+        return pnl;
+      }),
+    );
+    return { cells, absMax };
+  }, [rows, cols, strike, iv, isCall, qty, avgCost]);
+
+  // % return at expiration for the right-most column, computed per row.
+  const expReturnPct = (rowPrice: number): number => {
+    const intrinsic = isCall ? Math.max(0, rowPrice - strike) : Math.max(0, strike - rowPrice);
+    return ((intrinsic - avgCost) / avgCost) * 100;
+  };
+
+  const fmtDateHeader = (d: Date): string =>
+    d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+  return (
+    <div className="w-full overflow-x-auto rounded-md border border-(--color-border)">
+      <table className="w-full border-collapse text-[10px] tabular-nums">
+        <thead>
+          <tr className="bg-(--color-panel-2)">
+            <th className="sticky left-0 z-10 bg-(--color-panel-2) px-2 py-1.5 text-left text-(--color-text-dim)">
+              Spot
+            </th>
+            {cols.map((c, i) => (
+              <th
+                key={i}
+                className={`px-1 py-1.5 text-center font-normal text-(--color-text-dim) ${
+                  i === cols.length - 1 ? "border-l border-(--color-border)" : ""
+                }`}
+              >
+                {i === cols.length - 1 ? "Exp" : fmtDateHeader(c.date)}
+              </th>
+            ))}
+            <th className="px-2 py-1.5 text-right text-(--color-text-dim)">
+              +/-%
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((rowPrice, ri) => {
+            const pct = expReturnPct(rowPrice);
+            const isAtSpot = Math.abs(rowPrice - spot) < (hi - lo) / (N_ROWS - 1) / 2;
+            return (
+              <tr
+                key={ri}
+                className={isAtSpot ? "bg-(--color-accent)/5" : ""}
+              >
+                <td
+                  className={`sticky left-0 bg-(--color-panel) px-2 py-1 text-left font-medium ${isAtSpot ? "text-(--color-accent)" : ""}`}
+                >
+                  ${rowPrice.toFixed(2)}
+                </td>
+                {cols.map((_, ci) => {
+                  const v = grid.cells[ri][ci];
+                  const intensity = grid.absMax > 0 ? v / grid.absMax : 0;
+                  const bg =
+                    Math.abs(intensity) < 0.03
+                      ? "transparent"
+                      : intensity > 0
+                        ? `rgba(34, 197, 94, ${Math.min(0.6, Math.abs(intensity) * 0.6)})`
+                        : `rgba(220, 38, 38, ${Math.min(0.6, Math.abs(intensity) * 0.6)})`;
+                  return (
+                    <td
+                      key={ci}
+                      style={{ backgroundColor: bg }}
+                      className={`px-1 py-1 text-right ${
+                        ci === cols.length - 1
+                          ? "border-l border-(--color-border)"
+                          : ""
+                      }`}
+                      title={`${fmtDateHeader(cols[ci].date)}: ${fmtPnL(v)}`}
+                    >
+                      {isGuest
+                        ? fmtPnL(v)
+                        : `${v >= 0 ? "" : "-"}${Math.abs(v).toFixed(0)}`}
+                    </td>
+                  );
+                })}
+                <td
+                  className={`px-2 py-1 text-right font-medium ${
+                    pct >= 0 ? "text-(--color-up)" : "text-(--color-down)"
+                  }`}
+                >
+                  {pct >= 0 ? "+" : ""}
+                  {pct.toFixed(1)}%
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div className="border-t border-(--color-border) bg-(--color-panel-2) px-3 py-2 text-[10px] text-(--color-text-dim)">
+        Spot ≈ ${spot.toFixed(2)} · Expires {expiration} · Cells show P/L
+        {isGuest ? " (% of premium)" : " ($)"}. Right column is % return at
+        expiration.
       </div>
     </div>
   );
