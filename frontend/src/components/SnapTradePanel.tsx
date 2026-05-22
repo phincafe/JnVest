@@ -184,6 +184,7 @@ export function SnapTradePanel({
         <OptionPnLModal
           option={selectedOption}
           onClose={() => setSelectedOption(null)}
+          isGuest
         />
         <GuestPortfolioView holdings={holdings} />
       </OptionSelectionContext.Provider>
