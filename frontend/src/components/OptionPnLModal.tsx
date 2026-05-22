@@ -89,7 +89,7 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
   // broker reports a current per-share mark (option.price), back the IV out
   // of that mark so today's heatmap cells line up with the Current P/L card.
   // Falls back to the chain IV if the option has no current price.
-  const iv: number | null = useMemo(() => {
+  const solvedIv: number | null = useMemo(() => {
     if (
       option &&
       option.price > 0 &&
@@ -107,8 +107,28 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
       );
       if (solved != null && solved > 0) return solved;
     }
-    return chainIv;
-  }, [option, spot, daysToExp, chainIv]);
+    return null;
+  }, [option, spot, daysToExp]);
+
+  // User can override the IV used for projections (matches OPC's "IV CHANGE"
+  // control). Default = solvedIv (broker-mark IV) if available, else chainIv.
+  // null means "use the default"; reset clears the override.
+  const [userIv, setUserIv] = useState<number | null>(null);
+  // When the option changes (e.g. user opens a different option), clear any
+  // override so the new option gets its own default.
+  useEffect(() => {
+    setUserIv(null);
+  }, [option?.ticker, option?.strike, option?.expiration]);
+  const defaultIv = solvedIv ?? chainIv;
+  const iv = userIv ?? defaultIv;
+  const ivSource: "user" | "broker" | "chain" | "none" =
+    userIv != null
+      ? "user"
+      : solvedIv != null
+        ? "broker"
+        : chainIv != null
+          ? "chain"
+          : "none";
 
   // The backend strips quantity + avg_cost from options in public/guest mode
   // (those are private). Fall back to a synthetic baseline so the projection
@@ -293,19 +313,29 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
             isGuest={isGuest}
           />
 
-          <div className="mb-4 inline-flex rounded-md border border-(--color-border) bg-(--color-panel-2) p-0.5 text-xs">
-            <ViewToggleBtn
-              active={view === "chart"}
-              onClick={() => setView("chart")}
-              icon={<ChartIcon size={13} />}
-              label="Chart"
-            />
-            <ViewToggleBtn
-              active={view === "heatmap"}
-              onClick={() => setView("heatmap")}
-              icon={<Grid3x3 size={13} />}
-              label="Heatmap"
-            />
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <div className="inline-flex rounded-md border border-(--color-border) bg-(--color-panel-2) p-0.5 text-xs">
+              <ViewToggleBtn
+                active={view === "chart"}
+                onClick={() => setView("chart")}
+                icon={<ChartIcon size={13} />}
+                label="Chart"
+              />
+              <ViewToggleBtn
+                active={view === "heatmap"}
+                onClick={() => setView("heatmap")}
+                icon={<Grid3x3 size={13} />}
+                label="Heatmap"
+              />
+            </div>
+            {ready && defaultIv != null && (
+              <IvInput
+                iv={iv ?? 0}
+                defaultIv={defaultIv}
+                source={ivSource}
+                onChange={setUserIv}
+              />
+            )}
           </div>
 
           {err && (
@@ -464,6 +494,72 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Lets the user override the IV used for projections — matches the pattern
+ * on optionsprofitcalculator.com. Pre-fills with the default (solved from
+ * broker mark when available, else chain IV). "Reset" clears the override. */
+function IvInput({
+  iv,
+  defaultIv,
+  source,
+  onChange,
+}: {
+  iv: number;
+  defaultIv: number;
+  source: "user" | "broker" | "chain" | "none";
+  onChange: (v: number | null) => void;
+}) {
+  // Local text state so users can type freely (e.g. clear and retype) without
+  // the input snapping back on every keystroke.
+  const [text, setText] = useState<string>((iv * 100).toFixed(1));
+  useEffect(() => {
+    setText((iv * 100).toFixed(1));
+  }, [iv]);
+  const isOverridden = source === "user";
+  const sourceLabel =
+    source === "user"
+      ? "user"
+      : source === "broker"
+        ? "from broker mark"
+        : source === "chain"
+          ? "from chain"
+          : "—";
+  return (
+    <div className="flex items-center gap-1.5 text-xs">
+      <span className="text-(--color-text-dim)">IV</span>
+      <div className="flex items-center rounded-md border border-(--color-border) bg-(--color-panel-2) px-1.5">
+        <input
+          type="number"
+          inputMode="decimal"
+          step="0.5"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={() => {
+            const n = parseFloat(text);
+            if (Number.isFinite(n) && n > 0) onChange(n / 100);
+            else setText((defaultIv * 100).toFixed(1));
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          }}
+          className="w-14 bg-transparent py-1 text-right tabular-nums focus:outline-none"
+          aria-label="Implied volatility (percent)"
+        />
+        <span className="text-(--color-text-dim)">%</span>
+      </div>
+      <span className="text-(--color-text-dim)">{sourceLabel}</span>
+      {isOverridden && (
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          className="rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-(--color-text-dim) hover:bg-(--color-panel-2) hover:text-(--color-text)"
+        >
+          Reset
+        </button>
+      )}
     </div>
   );
 }
