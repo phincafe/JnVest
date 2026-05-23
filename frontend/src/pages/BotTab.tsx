@@ -415,6 +415,8 @@ type BacktestConfig = {
   entry_start_et: string;
   entry_end_et: string;
   assumed_iv: number;
+  confirm_bars: number;
+  confirm_max_wait: number;
 };
 
 const DEFAULT_CFG: BacktestConfig = {
@@ -427,6 +429,8 @@ const DEFAULT_CFG: BacktestConfig = {
   entry_start_et: "09:30",
   entry_end_et: "15:30",
   assumed_iv: 0.15,
+  confirm_bars: 2,
+  confirm_max_wait: 10,
 };
 
 const CFG_LS_KEY = "jnvest:bot:backtest_cfg";
@@ -470,6 +474,8 @@ function BacktestPanel() {
       sl_pct: String(cfg.sl_pct),
       entry_start_et: cfg.entry_start_et,
       entry_end_et: cfg.entry_end_et,
+      confirm_bars: String(cfg.confirm_bars),
+      confirm_max_wait: String(cfg.confirm_max_wait),
     });
 
   const run = async () => {
@@ -780,6 +786,20 @@ function SettingsPanel({
           value={cfg.assumed_iv}
           step={0.05}
           onChange={(v) => onChange("assumed_iv", v)}
+        />
+        <CfgField
+          label="Confirm bars"
+          help="After divergence is detected, wait for this many consecutive higher-closes (bullish) or lower-closes (bearish) before entering. Skips entries into the falling-knife bottom. 0 = enter immediately."
+          value={cfg.confirm_bars}
+          step={1}
+          onChange={(v) => onChange("confirm_bars", v)}
+        />
+        <CfgField
+          label="Confirm max wait"
+          help="If confirmation doesn't happen within this many bars of the divergence swing, discard the signal as stale."
+          value={cfg.confirm_max_wait}
+          step={1}
+          onChange={(v) => onChange("confirm_max_wait", v)}
         />
         <CfgTimeField
           label="Entry from (ET)"

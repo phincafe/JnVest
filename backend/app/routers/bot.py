@@ -121,6 +121,8 @@ def _cfg_from_query(
     entry_start_et: str,
     entry_end_et: str,
     assumed_iv: float,
+    confirm_bars: int,
+    confirm_max_wait: int,
 ) -> BacktestConfig:
     return BacktestConfig(
         swing_width=swing_width,
@@ -132,6 +134,8 @@ def _cfg_from_query(
         entry_start_et=entry_start_et,
         entry_end_et=entry_end_et,
         assumed_iv=assumed_iv,
+        confirm_bars=confirm_bars,
+        confirm_max_wait=confirm_max_wait,
     )
 
 
@@ -148,6 +152,8 @@ async def backtest(
     entry_start_et: str = "09:30",
     entry_end_et: str = "15:30",
     assumed_iv: float = 0.15,
+    confirm_bars: int = 2,
+    confirm_max_wait: int = 10,
 ) -> dict[str, Any]:
     """Simulate the strategy over the last N days of SPY 5m bars with the
     given config knobs. Heavy — POST so it shows up clearly in network
@@ -164,6 +170,8 @@ async def backtest(
         entry_start_et,
         entry_end_et,
         assumed_iv,
+        confirm_bars,
+        confirm_max_wait,
     )
     result = await run_backtest(days, cfg)
     return {
@@ -186,6 +194,8 @@ async def backtest_shock(
     sl_pct: float = 0.20,
     entry_start_et: str = "09:30",
     entry_end_et: str = "15:30",
+    confirm_bars: int = 2,
+    confirm_max_wait: int = 10,
 ) -> dict[str, Any]:
     """Run the backtest at three IV levels (15% / 25% / 35%) so the user
     can see whether the strategy survives volatility changes. Same config
@@ -201,6 +211,8 @@ async def backtest_shock(
         entry_start_et,
         entry_end_et,
         0.15,  # placeholder; overridden inside run_iv_shock
+        confirm_bars,
+        confirm_max_wait,
     )
     slices = await run_iv_shock(days, base)
     return {

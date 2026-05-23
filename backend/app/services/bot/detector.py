@@ -71,6 +71,36 @@ def _find_local_highs(values: list[float], width: int = 2) -> list[int]:
     return out
 
 
+def _has_bullish_confirmation(closes: list[float], from_idx: int, n: int) -> bool:
+    """True if the last `n` consecutive closes after `from_idx` are each
+    higher than the previous close. Used to confirm a bullish reversal —
+    don't enter right at the divergence low, wait for the bounce to take
+    shape. `n=0` disables (returns True immediately, original behavior)."""
+    if n <= 0:
+        return True
+    end = len(closes) - 1
+    if end - from_idx < n:
+        return False
+    for j in range(end - n + 1, end + 1):
+        if j == 0 or closes[j] <= closes[j - 1]:
+            return False
+    return True
+
+
+def _has_bearish_confirmation(closes: list[float], from_idx: int, n: int) -> bool:
+    """Mirror of bullish confirmation — N consecutive lower closes after
+    the divergence high."""
+    if n <= 0:
+        return True
+    end = len(closes) - 1
+    if end - from_idx < n:
+        return False
+    for j in range(end - n + 1, end + 1):
+        if j == 0 or closes[j] >= closes[j - 1]:
+            return False
+    return True
+
+
 def detect(
     bars: list[Bar],
     rsi_period: int = 14,
@@ -79,6 +109,8 @@ def detect(
     min_bars_between: int = 3,
     min_rsi_gap: float = 0.0,
     min_price_gap_pct: float = 0.0,
+    confirm_bars: int = 2,
+    confirm_max_wait: int = 10,
 ) -> Signal | None:
     """Scan the most recent `lookback` bars for an RSI-vs-price divergence.
 
@@ -99,6 +131,17 @@ def detect(
     `min_price_gap_pct` = require |current_price - prior_price| / prior_price
     × 100 ≥ this percent. Defaults to 0. Filters out trivial swings that are
     visually divergent but not material moves.
+
+    `confirm_bars` = "first leg up, confirm the bounce" — after divergence
+    is found at swing `curr`, require this many consecutive directional
+    closes (higher closes for bullish, lower for bearish) between `curr`
+    and the latest bar before firing the signal. Avoids entering into the
+    very bottom of a falling knife. `confirm_bars=0` = old immediate-entry
+    behavior.
+
+    `confirm_max_wait` = if confirmation doesn't happen within this many
+    bars of `curr`, the divergence is considered stale and discarded.
+    Prevents firing on a divergence that "confirmed" 20 bars later.
     """
     if len(bars) < max(rsi_period + 5, lookback):
         return None
@@ -125,7 +168,13 @@ def detect(
         ):
             rsi_gap = curr_rsi - prior_rsi
             price_gap_pct = abs(lows[curr] - lows[prior]) / lows[prior] * 100 if lows[prior] else 0
-            if rsi_gap >= min_rsi_gap and price_gap_pct >= min_price_gap_pct:
+            bars_since_swing = (len(bars) - 1) - curr
+            if (
+                rsi_gap >= min_rsi_gap
+                and price_gap_pct >= min_price_gap_pct
+                and bars_since_swing <= confirm_max_wait
+                and _has_bullish_confirmation(closes, curr, confirm_bars)
+            ):
                 return Signal(
                     side="call",
                     index=curr,
@@ -151,7 +200,13 @@ def detect(
             price_gap_pct = (
                 abs(highs[curr] - highs[prior]) / highs[prior] * 100 if highs[prior] else 0
             )
-            if rsi_gap >= min_rsi_gap and price_gap_pct >= min_price_gap_pct:
+            bars_since_swing = (len(bars) - 1) - curr
+            if (
+                rsi_gap >= min_rsi_gap
+                and price_gap_pct >= min_price_gap_pct
+                and bars_since_swing <= confirm_max_wait
+                and _has_bearish_confirmation(closes, curr, confirm_bars)
+            ):
                 return Signal(
                     side="put",
                     index=curr,

@@ -53,6 +53,38 @@ def test_flat_data_yields_no_signal() -> None:
     assert detect(_bars([100.0] * 60)) is None
 
 
+def test_confirm_bars_delays_signal_until_bounce() -> None:
+    """A bullish divergence shouldn't fire at the exact divergence bar with
+    confirm_bars > 0 — we wait for higher closes first."""
+    seq = [100.0] * 20
+    seq += [99, 98, 97, 96, 94, 92]  # first bottom at idx 25
+    seq += [93, 94, 95]
+    seq += [94, 93, 92, 91, 90]  # second bottom at idx 33 (lower)
+    # Bars right after the bottom: no clear "leg up" yet.
+    near_bottom = seq + [90, 90]
+    # confirm_bars=2 needs the LATEST 2 bars to be higher than their
+    # predecessor — flat 90s don't qualify.
+    assert detect(_bars(near_bottom), confirm_bars=2) is None
+
+    # Same data, plus a 2-bar leg up at the end — confirmation satisfied.
+    with_bounce = seq + [91, 92]
+    sig = detect(_bars(with_bounce), confirm_bars=2)
+    assert sig is not None and sig.side == "call"
+
+
+def test_confirm_max_wait_discards_stale_divergence() -> None:
+    """If price drifts sideways for many bars after the divergence, the
+    signal goes stale and is discarded."""
+    seq = [100.0] * 20
+    seq += [99, 98, 97, 96, 94, 92]  # first bottom
+    seq += [93, 94, 95]
+    seq += [94, 93, 92, 91, 90]  # second bottom at idx 33
+    # 15 bars of sideways — exceeds confirm_max_wait=10.
+    seq += [90.5, 91, 91.5, 92, 91.5, 91, 91.5, 92, 91.5, 91, 91.5, 92, 91.5, 91, 92]
+    sig = detect(_bars(seq), confirm_bars=2, confirm_max_wait=10)
+    assert sig is None
+
+
 def test_min_bars_between_filters_close_swings() -> None:
     # Two adjacent lows — too close together, shouldn't count.
     seq = [100.0] * 20

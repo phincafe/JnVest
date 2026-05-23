@@ -37,6 +37,10 @@ class BacktestConfig:
     min_bars_between: int = 3
     min_rsi_gap: float = 0.0
     min_price_gap_pct: float = 0.0
+    # "First leg up, confirm bounce" — wait for N consecutive directional
+    # closes after the divergence swing before firing. 0 = enter immediately.
+    confirm_bars: int = 2
+    confirm_max_wait: int = 10
     # Exits (percent on option mark)
     tp_pct: float = 0.20
     sl_pct: float = 0.20
@@ -228,6 +232,8 @@ async def run_backtest(days: int, config: BacktestConfig | None = None) -> Backt
             min_bars_between=cfg.min_bars_between,
             min_rsi_gap=cfg.min_rsi_gap,
             min_price_gap_pct=cfg.min_price_gap_pct,
+            confirm_bars=cfg.confirm_bars,
+            confirm_max_wait=cfg.confirm_max_wait,
         )
         if sig is None or sig.index <= last_signal_idx:
             continue
