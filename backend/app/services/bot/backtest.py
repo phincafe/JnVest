@@ -183,15 +183,21 @@ async def run_backtest(days: int, config: BacktestConfig | None = None) -> Backt
             tp = open_trade.entry_mark * (1 + cfg.tp_pct)
             sl = open_trade.entry_mark * (1 - cfg.sl_pct)
             reason: str | None = None
+            # Cap exit fills to be realistic. TP is a LIMIT sell — fills at
+            # the threshold even if the bar's full mark gapped higher.
+            # SL/time exit as a MARKET sell — fill at the bar's current mark
+            # (can slip below SL during fast moves, which is realistic).
+            exit_mark = mark
             if mark >= tp:
                 reason = "tp"
+                exit_mark = tp
             elif mark <= sl:
                 reason = "sl"
             elif _is_past_time_stop_et(bar_ts):
                 reason = "time"
             if reason is not None:
-                # Close at mark.
-                pnl = (mark - open_trade.entry_mark) * 100.0 * open_trade.qty
+                # Close at exit_mark.
+                pnl = (exit_mark - open_trade.entry_mark) * 100.0 * open_trade.qty
                 day_pnl += pnl
                 equity += pnl
                 trade = SimTrade(
@@ -205,7 +211,7 @@ async def run_backtest(days: int, config: BacktestConfig | None = None) -> Backt
                     exit_idx=i,
                     exit_ts=bar_ts.isoformat(),
                     spot_at_exit=bars[i].close,
-                    exit_mark=mark,
+                    exit_mark=exit_mark,
                     exit_reason=reason,
                     pnl=pnl,
                 )
