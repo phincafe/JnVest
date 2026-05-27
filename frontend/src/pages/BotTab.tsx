@@ -1,5 +1,5 @@
 /**
- * SPY 0-DTE RSI-divergence bot dashboard.
+ * SPY next-day (1-DTE) RSI-divergence bot dashboard.
  *
  * Owner-only. The bot itself runs on the backend (a background asyncio loop);
  * this page is read + a kill-switch. It polls /api/bot/status every 15s so
@@ -121,10 +121,10 @@ export default function BotTab({ refreshNonce }: { refreshNonce: number }) {
       <BacktestPanel />
 
       <p className="text-[11px] text-(--color-text-dim)">
-        Strategy: RSI(14) divergence on SPY 5-minute bars → buy 0-DTE ATM call
-        (bullish div) or put (bearish div). Exit at +20% / −20% / 15:30 ET.
-        Sizing −2% of equity per trade, capped at 20 contracts. Paper trading
-        only.
+        Strategy: RSI(14) divergence on SPY 5-minute bars → buy next-day
+        (1-DTE) ATM call (bullish div) or put (bearish div). Exit at +20% /
+        −20% / 15:30 ET on the option's expiration day. Sizing −2% of equity
+        per trade, capped at 20 contracts. Paper trading only.
       </p>
     </div>
   );
@@ -862,7 +862,7 @@ function SettingsPanel({
         />
         <CfgField
           label="Assumed IV"
-          help="IV used for option pricing in the single backtest. Real 0-DTE SPY ATM IV varies ~12-35%. The 'IV shock' button tests 15/25/35 side-by-side."
+          help="IV used for option pricing in the single backtest. Real 1-DTE SPY ATM IV varies ~12-30%. The 'IV shock' button tests 15/25/35 side-by-side."
           value={cfg.assumed_iv}
           step={0.05}
           onChange={(v) => onChange("assumed_iv", v)}
