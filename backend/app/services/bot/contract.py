@@ -1,7 +1,9 @@
 """Resolve which SPY option contract to trade for a given signal.
 
-Strategy: 0-DTE ATM. If today isn't a SPY expiration (weekend, holiday, or
-a rare gap day), fall back to the nearest available expiration.
+Strategy: shortest-DTE ATM that's NOT same-day. Skips today's expiration if
+it exists in the chain and picks the next available expiration instead — so
+the trade has ~1 day of time premium at entry (avoids the 0-DTE gamma cliff
+that crushes positions when SPY barely moves during the day).
 """
 
 from __future__ import annotations
@@ -25,9 +27,12 @@ def _occ_symbol(underlying: str, expiration: str, side: str, strike: float) -> s
     return f"{underlying.upper()}{yy}{mm}{dd}{cp}{strike_int:08d}"
 
 
-async def pick_0dte_atm(spot: float, side: str) -> tuple[str, float, str] | None:
-    """Return (occ_symbol, strike, expiration) for today's ATM SPY call/put.
-    Returns None if no expiration is available today (weekend / holiday).
+async def pick_next_day_atm(spot: float, side: str) -> tuple[str, float, str] | None:
+    """Return (occ_symbol, strike, expiration) for the next-day ATM SPY
+    call/put — the shortest-DTE expiration that is NOT today.
+
+    Returns None if no future expiration is available (weekend with no
+    next-week expiration loaded, etc.).
 
     `side` = 'call' | 'put'.
     """
@@ -39,8 +44,15 @@ async def pick_0dte_atm(spot: float, side: str) -> tuple[str, float, str] | None
     if not exps:
         return None
 
-    # Prefer today's expiration; else the nearest future one.
-    target_exp = today if today in exps else exps[0]
+    # yahoo returns sorted ascending. Pick the first expiration strictly
+    # AFTER today. If today itself appears in the list, skip it.
+    target_exp: str | None = None
+    for exp in exps:
+        if exp > today:
+            target_exp = exp
+            break
+    if target_exp is None:
+        return None
 
     try:
         chain = await yahoo.option_chain(UNDERLYING, target_exp)
@@ -50,10 +62,15 @@ async def pick_0dte_atm(spot: float, side: str) -> tuple[str, float, str] | None
     rows = chain.get("calls" if side.lower().startswith("c") else "puts", [])
     if not rows:
         return None
-    # ATM = strike closest to spot. Ignore strikes with zero strike (junk).
     strikes = [float(r["strike"]) for r in rows if r.get("strike")]
     if not strikes:
         return None
     atm_strike = min(strikes, key=lambda k: abs(k - spot))
     occ = _occ_symbol(UNDERLYING, target_exp, side, atm_strike)
     return occ, atm_strike, target_exp
+
+
+# Back-compat alias — callers import `pick_0dte_atm` from older code.
+# Points to the new "next-day" behaviour. Remove once all call sites are
+# updated.
+pick_0dte_atm = pick_next_day_atm

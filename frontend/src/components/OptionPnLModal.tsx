@@ -676,13 +676,28 @@ function PnLHeatmap({
   // and 120d expirations (≈2d steps for short, ≈9d for long).
   const N_COLS = 14;
   const N_ROWS = 30;
-  // Spot range. Default ±15% covers most ATM-ish plays; wider presets let the
-  // user see deeper OTM moves. Range is anchored to BOTH spot and strike so
-  // the user always sees the interesting region — using a single center
+  // Spot range. Default ±15% covers most ATM-ish plays; wider presets let
+  // the user see deeper OTM moves. Range is anchored to BOTH spot and strike
+  // so the user always sees the interesting region — using a single center
   // (max of the two) misses the spot entirely for far-OTM calls.
+  //
+  // "Custom" mode lets the user type explicit $lo/$hi bounds in case they
+  // want to focus the heatmap on a specific price band (e.g. their personal
+  // best/worst case for the underlying).
+  const [rangeMode, setRangeMode] = useState<"preset" | "custom">("preset");
   const [rangePct, setRangePct] = useState(0.15);
-  const lo = Math.min(spot, strike) * (1 - rangePct);
-  const hi = Math.max(spot, strike) * (1 + rangePct);
+  const presetLo = Math.min(spot, strike) * (1 - rangePct);
+  const presetHi = Math.max(spot, strike) * (1 + rangePct);
+  const [customLoStr, setCustomLoStr] = useState<string>("");
+  const [customHiStr, setCustomHiStr] = useState<string>("");
+  const customLo = parseFloat(customLoStr);
+  const customHi = parseFloat(customHiStr);
+  const customRangeValid =
+    Number.isFinite(customLo) && Number.isFinite(customHi) && customLo > 0 && customHi > customLo;
+  const lo =
+    rangeMode === "custom" && customRangeValid ? customLo : presetLo;
+  const hi =
+    rangeMode === "custom" && customRangeValid ? customHi : presetHi;
 
   const rows = useMemo(() => {
     const out: number[] = [];
@@ -756,16 +771,19 @@ function PnLHeatmap({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2 text-[11px]">
+      <div className="flex flex-wrap items-center gap-2 text-[11px]">
         <span className="text-(--color-text-dim)">Spot range</span>
         <div className="inline-flex rounded-md border border-(--color-border) bg-(--color-panel-2) p-0.5">
           {RANGE_PRESETS.map((p) => (
             <button
               key={p.value}
               type="button"
-              onClick={() => setRangePct(p.value)}
+              onClick={() => {
+                setRangeMode("preset");
+                setRangePct(p.value);
+              }}
               className={`rounded px-2 py-0.5 transition-colors ${
-                rangePct === p.value
+                rangeMode === "preset" && rangePct === p.value
                   ? "bg-(--color-accent) text-white"
                   : "text-(--color-text-dim) hover:text-(--color-text)"
               }`}
@@ -773,7 +791,50 @@ function PnLHeatmap({
               {p.label}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => {
+              setRangeMode("custom");
+              if (!customLoStr) setCustomLoStr(presetLo.toFixed(2));
+              if (!customHiStr) setCustomHiStr(presetHi.toFixed(2));
+            }}
+            className={`rounded px-2 py-0.5 transition-colors ${
+              rangeMode === "custom"
+                ? "bg-(--color-accent) text-white"
+                : "text-(--color-text-dim) hover:text-(--color-text)"
+            }`}
+          >
+            Custom
+          </button>
         </div>
+        {rangeMode === "custom" && (
+          <div className="flex items-center gap-1">
+            <span className="text-(--color-text-dim)">$</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.5"
+              value={customLoStr}
+              onChange={(e) => setCustomLoStr(e.target.value)}
+              placeholder="lo"
+              className="w-16 rounded-md border border-(--color-border) bg-(--color-panel-2) px-1.5 py-0.5 text-right tabular-nums focus:border-(--color-accent) focus:outline-none"
+            />
+            <span className="text-(--color-text-dim)">–</span>
+            <span className="text-(--color-text-dim)">$</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.5"
+              value={customHiStr}
+              onChange={(e) => setCustomHiStr(e.target.value)}
+              placeholder="hi"
+              className="w-16 rounded-md border border-(--color-border) bg-(--color-panel-2) px-1.5 py-0.5 text-right tabular-nums focus:border-(--color-accent) focus:outline-none"
+            />
+            {!customRangeValid && (
+              <span className="text-(--color-down)">need lo &lt; hi</span>
+            )}
+          </div>
+        )}
         <span className="text-(--color-text-dim)">
           ${lo.toFixed(2)} – ${hi.toFixed(2)}
         </span>

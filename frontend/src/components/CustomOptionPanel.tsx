@@ -8,9 +8,10 @@
  * "public view" fallback (synthetic qty=1 @ chain mark) handles the case
  * where avg_cost is left blank.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Calculator, ChevronDown, ChevronUp, Search } from "lucide-react";
-import type { SnapTradeOption } from "../api/types";
+import { api } from "../api/client";
+import type { ExpirationsResponse, SnapTradeOption } from "../api/types";
 import { useTickerSearch } from "../hooks/useTickerSearch";
 import { OptionPnLModal } from "./OptionPnLModal";
 
@@ -37,9 +38,50 @@ export function CustomOptionPanel({ isGuest = false }: { isGuest?: boolean }) {
   const [form, setForm] = useState<FormState>(EMPTY);
   const [selected, setSelected] = useState<SnapTradeOption | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // Available expirations for the current underlying, fetched from
+  // /api/options/{symbol}/expirations. Drives the expiration <select>.
+  const [expirations, setExpirations] = useState<string[]>([]);
+  const [expsLoading, setExpsLoading] = useState(false);
 
   const setField = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm((s) => ({ ...s, [k]: v }));
+
+  // Whenever the underlying changes, refetch the expirations list. Debounce
+  // a bit so we don't slam the API while the user is typing.
+  useEffect(() => {
+    const sym = form.underlying.trim().toUpperCase();
+    if (!sym) {
+      setExpirations([]);
+      return;
+    }
+    let cancelled = false;
+    setExpsLoading(true);
+    const id = setTimeout(() => {
+      api
+        .get<ExpirationsResponse>(`/options/${sym}/expirations`)
+        .then((r) => {
+          if (cancelled) return;
+          setExpirations(r.expirations ?? []);
+          // If the currently-selected expiration is no longer valid for
+          // this underlying, clear it so the user picks a fresh one.
+          if (form.expiration && !(r.expirations ?? []).includes(form.expiration)) {
+            setField("expiration", "");
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setExpirations([]);
+        })
+        .finally(() => {
+          if (!cancelled) setExpsLoading(false);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.underlying]);
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,9 +178,11 @@ export function CustomOptionPanel({ isGuest = false }: { isGuest?: boolean }) {
             step="0.5"
             onChange={(v) => setField("strike", v)}
           />
-          <DateField
-            label="Expiration"
+          <ExpirationField
             value={form.expiration}
+            options={expirations}
+            loading={expsLoading}
+            disabled={!form.underlying.trim()}
             onChange={(v) => setField("expiration", v)}
           />
           <NumberField
@@ -278,27 +322,46 @@ function NumberField({
   );
 }
 
-function DateField({
-  label,
+function ExpirationField({
   value,
+  options,
+  loading,
+  disabled,
   onChange,
 }: {
-  label: string;
   value: string;
+  options: string[];
+  loading: boolean;
+  disabled: boolean;
   onChange: (v: string) => void;
 }) {
+  const placeholder = disabled
+    ? "Pick a ticker first"
+    : loading
+      ? "Loading expirations…"
+      : options.length === 0
+        ? "No expirations available"
+        : "Pick an expiration";
   return (
     <div className="flex flex-col gap-1">
       <label className="text-[10px] uppercase tracking-wide text-(--color-text-dim)">
-        {label}
+        Expiration
       </label>
-      <input
-        type="date"
+      <select
         value={value}
+        disabled={disabled || loading || options.length === 0}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded-md border border-(--color-border) bg-(--color-panel-2) px-2 py-1.5 text-sm tabular-nums focus:border-(--color-accent) focus:outline-none"
-      />
+        className="rounded-md border border-(--color-border) bg-(--color-panel-2) px-2 py-1.5 text-sm tabular-nums focus:border-(--color-accent) focus:outline-none disabled:opacity-60"
+      >
+        <option value="">{placeholder}</option>
+        {options.map((d) => (
+          <option key={d} value={d}>
+            {d}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
+
 

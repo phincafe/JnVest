@@ -20,6 +20,17 @@ from .. import alpaca
 from ..blackscholes import price as bs_price
 from .detector import Bar, detect
 
+
+def _next_trading_day_end_utc(entry_ts: datetime) -> datetime:
+    """Bot trades next-day expirations (1-DTE). Return entry_ts + 1
+    trading day, set to 20:00 UTC (≈ 4pm ET market close). Skips Sat/Sun
+    so a Friday entry expires the following Monday."""
+    d = entry_ts + timedelta(days=1)
+    while d.weekday() >= 5:  # 5 = Sat, 6 = Sun
+        d += timedelta(days=1)
+    return d.replace(hour=20, minute=0, second=0, microsecond=0)
+
+
 DAILY_LOSS_CAP_PCT = 0.05  # mirror of safety.py
 RISK_PCT = 0.02
 STARTING_EQUITY = 10_000.0  # synthetic for sizing math during the backtest
@@ -165,10 +176,7 @@ async def run_backtest(days: int, config: BacktestConfig | None = None) -> Backt
             entry_ts = timestamps[open_trade.entry_idx]
             days_remaining_at_entry = max(
                 0.001,
-                (
-                    timestamps[open_trade.entry_idx].replace(hour=20, minute=0, second=0) - entry_ts
-                ).total_seconds()
-                / 86400,
+                (_next_trading_day_end_utc(entry_ts) - entry_ts).total_seconds() / 86400,
             )
             elapsed_days = (bar_ts - entry_ts).total_seconds() / 86400
             days_remaining = max(0.0, days_remaining_at_entry - elapsed_days)
@@ -193,7 +201,13 @@ async def run_backtest(days: int, config: BacktestConfig | None = None) -> Backt
                 exit_mark = tp
             elif mark <= sl:
                 reason = "sl"
-            elif _is_past_time_stop_et(bar_ts):
+            elif (
+                # Only fire the time-stop on the option's expiration day —
+                # otherwise a 1-DTE position would close at 15:30 ET on its
+                # entry day, before it had a chance to work.
+                _is_past_time_stop_et(bar_ts)
+                and bar_ts.date() >= _next_trading_day_end_utc(entry_ts).date()
+            ):
                 reason = "time"
             if reason is not None:
                 # Close at exit_mark.
@@ -247,12 +261,11 @@ async def run_backtest(days: int, config: BacktestConfig | None = None) -> Backt
         # Entry at next bar's open (i+1) — same convention live trading would use.
         entry_idx = i + 1
         spot_at_entry = bars[entry_idx].open
-        # 0-DTE ATM call/put: strike rounded to nearest dollar, expiry 16:00 ET today.
+        # 1-DTE ATM call/put: strike rounded to nearest dollar, expiry at
+        # next trading day's close (matches the live bot's pick_next_day_atm).
         strike = round(spot_at_entry)
-        # Days remaining = from entry_ts to today's 16:00 ET (≈20:00 UTC).
         entry_ts_b = timestamps[entry_idx]
-        # Same crude DST-agnostic mapping the live bot uses.
-        expiry_utc = entry_ts_b.replace(hour=20, minute=0, second=0, microsecond=0)
+        expiry_utc = _next_trading_day_end_utc(entry_ts_b)
         days_remaining = max(0.001, (expiry_utc - entry_ts_b).total_seconds() / 86400)
         is_call = sig.side == "call"
         entry_mark = bs_price(
@@ -291,7 +304,7 @@ async def run_backtest(days: int, config: BacktestConfig | None = None) -> Backt
         i = len(bars) - 1
         bar_ts = timestamps[i]
         entry_ts = timestamps[open_trade.entry_idx]
-        expiry_utc = entry_ts.replace(hour=20, minute=0, second=0)
+        expiry_utc = _next_trading_day_end_utc(entry_ts)
         days_remaining = max(0.0, (expiry_utc - bar_ts).total_seconds() / 86400)
         is_call = open_trade.side == "call"
         mark = bs_price(

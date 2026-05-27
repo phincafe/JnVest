@@ -37,6 +37,18 @@ async def _option_mark(occ: str) -> float | None:
     return p if p > 0 else None
 
 
+def _parse_expiration_from_occ(occ: str) -> str | None:
+    """OCC symbol embeds YYMMDD at fixed offsets after the underlying.
+    Returns the expiration as YYYY-MM-DD or None if it can't be parsed."""
+    import re
+
+    m = re.match(r"^[A-Z]+(\d{2})(\d{2})(\d{2})[CP]\d{8}$", occ)
+    if not m:
+        return None
+    yy, mm, dd = m.group(1), m.group(2), m.group(3)
+    return f"20{yy}-{mm}-{dd}"
+
+
 async def close_trade_if_target_hit(trade: BotTrade) -> bool:
     """Returns True if we closed the trade this call, else False."""
     mark = await _option_mark(trade.occ_symbol)
@@ -47,8 +59,14 @@ async def close_trade_if_target_hit(trade: BotTrade) -> bool:
             reason = "tp"
         elif mark <= trade.sl_price:
             reason = "sl"
+    # Time-stop only on the option's actual expiration day. Bot is now
+    # 1-DTE so we hold overnight; we can't blindly fire the time-stop at
+    # 15:30 ET every day or we'd close fresh positions on entry day.
     if reason is None and safety.is_past_time_stop(now):
-        reason = "time"
+        exp = _parse_expiration_from_occ(trade.occ_symbol)
+        today_utc = now.strftime("%Y-%m-%d")
+        if exp is not None and exp <= today_utc:
+            reason = "time"
     if reason is None:
         return False
 

@@ -18,7 +18,7 @@ from ...db import SessionLocal
 from ...models import BotSignal, BotState, BotTrade
 from .. import alpaca
 from . import safety
-from .contract import pick_0dte_atm
+from .contract import pick_next_day_atm
 from .detector import Bar, detect
 from .monitor import close_trade_if_target_hit
 from .sizing import size_for_risk
@@ -92,9 +92,9 @@ async def _option_mark(occ_symbol: str) -> float | None:
 
 async def _try_open_trade(spot: float, side: str, signal_id: int) -> BotTrade | None:
     """Resolve contract → size → place paper buy → persist trade row."""
-    picked = await pick_0dte_atm(spot, side)
+    picked = await pick_next_day_atm(spot, side)
     if picked is None:
-        log.info("no 0-DTE expiration available for SPY today; skipping")
+        log.info("no next-day expiration available for SPY; skipping")
         return None
     occ, strike, expiration = picked
     mark = await _option_mark(occ)
