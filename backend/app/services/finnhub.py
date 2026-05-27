@@ -10,6 +10,11 @@ from . import cache
 
 BASE = "https://finnhub.io/api/v1"
 TIMEOUT = httpx.Timeout(10.0)
+# News calls in particular: the response is large (full articles) and Finnhub
+# is sometimes slow under load. A 10s wait blocks the StockDetail's news
+# panel skeleton for too long; 4s is enough for a healthy response and fails
+# fast on rate-limits / outages so the UI degrades to the inline warning.
+NEWS_TIMEOUT = httpx.Timeout(4.0)
 
 
 def _key() -> str:
@@ -67,7 +72,7 @@ async def company_news(symbol: str, days_back: int = 30) -> list[dict[str, Any]]
     async def fetch() -> list[dict[str, Any]]:
         to = datetime.utcnow().date()
         frm = to - timedelta(days=days_back)
-        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=NEWS_TIMEOUT) as client:
             r = await client.get(
                 f"{BASE}/company-news",
                 params={
