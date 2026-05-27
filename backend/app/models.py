@@ -78,6 +78,29 @@ class BuyTarget(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class PriceAlert(Base):
+    """Owner-set price alert. Background task evaluates these every minute
+    during market hours; when fires, the frontend's AlertsPanel notices the
+    new `triggered_at` on next poll and pops a browser notification.
+
+    `direction`: "above" or "below" the threshold.
+    `dismissed_at`: set when the user acknowledges a fired alert — keeps it
+    out of the active list but preserves history.
+    """
+
+    __tablename__ = "jnv_price_alerts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    direction: Mapped[str] = mapped_column(String(8), nullable=False)  # "above" | "below"
+    threshold: Mapped[float] = mapped_column(Float, nullable=False)
+    note: Mapped[str | None] = mapped_column(String(140), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    triggered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    triggered_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class BotState(Base):
     """Singleton row (id=1) holding the SPY-divergence bot's runtime state.
     Persisted so the bot resumes its on/off state across app restarts (Render

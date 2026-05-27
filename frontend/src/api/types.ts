@@ -593,3 +593,25 @@ export type BotBacktestShockResponse = {
   days_requested: number;
   slices: BotBacktestShockSlice[];
 };
+
+// --- Price alerts -----------------------------------------------------------
+export type PriceAlert = {
+  id: number;
+  symbol: string;
+  direction: "above" | "below";
+  threshold: number;
+  note: string | null;
+  created_at: string;
+  triggered_at: string | null;
+  triggered_price: number | null;
+  dismissed_at: string | null;
+};
+
+export type PriceAlertsResponse = { alerts: PriceAlert[] };
+
+export type PriceAlertInput = {
+  symbol: string;
+  direction: "above" | "below";
+  threshold: number;
+  note?: string | null;
+};

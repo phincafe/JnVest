@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, Search } from "lucide-react";
 import { AiWatch } from "../components/AiWatch";
+import { AlertsPanel } from "../components/AlertsPanel";
 import { SpaceWatch } from "../components/SpaceWatch";
 import { WhWatch } from "../components/WhWatch";
 import { BuyWatch } from "../components/BuyWatch";
@@ -18,14 +19,16 @@ type Props = {
   isGuest?: boolean;
 };
 
-type ListKey = "holdings" | "buy" | "ai" | "wsb" | "wh" | "space";
-const LIST_TABS: { key: ListKey; label: string }[] = [
+type ListKey = "holdings" | "buy" | "ai" | "wsb" | "wh" | "space" | "alerts";
+type ListTab = { key: ListKey; label: string; ownerOnly?: boolean };
+const LIST_TABS: ListTab[] = [
   { key: "holdings", label: "Holdings" },
   { key: "buy", label: "Buy Watch" },
   { key: "ai", label: "AI Watch" },
   { key: "wsb", label: "WSB" },
   { key: "wh", label: "WH Watch" },
   { key: "space", label: "Space" },
+  { key: "alerts", label: "Alerts", ownerOnly: true },
 ];
 
 export default function WatchlistTab({
@@ -55,7 +58,7 @@ export default function WatchlistTab({
             panel takes over the screen. */}
         <div className={`${selected ? "hidden lg:block" : "block"} space-y-3`}>
           <div className="flex flex-wrap items-center gap-1 rounded-md border border-(--color-border) bg-(--color-panel) p-1">
-            {LIST_TABS.map((t) => (
+            {LIST_TABS.filter((t) => !t.ownerOnly || !isGuest).map((t) => (
               <button
                 key={t.key}
                 onClick={() => setActiveList(t.key)}
@@ -93,6 +96,9 @@ export default function WatchlistTab({
           )}
           {activeList === "space" && (
             <SpaceWatch refreshNonce={refreshNonce} onSelect={setSelected} />
+          )}
+          {activeList === "alerts" && !isGuest && (
+            <AlertsPanel refreshNonce={refreshNonce} />
           )}
           {activeList === "wsb" && (
             <WsbPulse refreshNonce={refreshNonce} onSelect={setSelected} />
