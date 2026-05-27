@@ -277,14 +277,46 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
             </div>
             <div className="mt-1 text-xs text-(--color-text-dim)">
               {isSyntheticPosition ? (
-                <span className="rounded bg-(--color-accent)/15 px-1.5 py-0.5 text-(--color-accent)">
-                  Public view · 1 contract @ current mark
-                </span>
+                <>
+                  <span className="rounded bg-(--color-accent)/15 px-1.5 py-0.5 text-(--color-accent)">
+                    Public view · 1 contract @ current mark
+                  </span>
+                  {chainMark != null && (
+                    <span> · mark ${fmtPrice(chainMark)}</span>
+                  )}
+                </>
               ) : (
                 <>
                   {effectiveQty > 0 ? "Long" : "Short"} {Math.abs(effectiveQty)} @
                   {" "}$
                   {effectiveAvgCost != null ? fmtPrice(effectiveAvgCost) : "—"}
+                  {option.price > 0 && (
+                    <>
+                      {" → "}
+                      <span className="text-(--color-text)">
+                        ${fmtPrice(option.price)}
+                      </span>
+                      {effectiveAvgCost && effectiveAvgCost > 0 && (() => {
+                        const pct =
+                          ((option.price - effectiveAvgCost) /
+                            effectiveAvgCost) *
+                          100;
+                        return (
+                          <span
+                            className={
+                              pct >= 0
+                                ? "text-(--color-up)"
+                                : "text-(--color-down)"
+                            }
+                          >
+                            {" "}
+                            ({pct >= 0 ? "+" : ""}
+                            {pct.toFixed(1)}%)
+                          </span>
+                        );
+                      })()}
+                    </>
+                  )}
                 </>
               )}
               {iv != null && ` · IV ${(iv * 100).toFixed(1)}%`}
