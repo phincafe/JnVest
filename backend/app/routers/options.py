@@ -207,3 +207,26 @@ async def chain(
         "calls": calls,
         "puts": puts,
     }
+
+
+@router.get("/snapshot")
+async def option_snapshot(occ: str) -> dict[str, Any]:
+    """Live Alpaca bid/ask/last for a single OCC option symbol. Lets the
+    frontend back-solve a real-time IV via Black-Scholes instead of relying
+    on yfinance's possibly-delayed chain IV.
+
+    Returns {bid, ask, mid, last} — all floats; null when Alpaca has no
+    quote for the symbol (illiquid strike, malformed OCC, etc.).
+    """
+    occ = (occ or "").strip().upper()
+    if not occ:
+        raise HTTPException(status_code=400, detail="occ is required")
+    snaps = await alpaca.option_snapshots([occ])
+    snap = snaps.get(occ) or {}
+    q = snap.get("latestQuote") or {}
+    t = snap.get("latestTrade") or {}
+    bid = float(q.get("bp") or 0) or None
+    ask = float(q.get("ap") or 0) or None
+    mid = (bid + ask) / 2.0 if (bid and ask) else None
+    last = float(t.get("p") or 0) or None
+    return {"occ": occ, "bid": bid, "ask": ask, "mid": mid, "last": last}

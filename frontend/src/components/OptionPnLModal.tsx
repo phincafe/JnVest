@@ -35,6 +35,36 @@ type ChartPoint = {
 
 type View = "chart" | "heatmap";
 
+type OptionSnapshot = {
+  occ: string;
+  bid: number | null;
+  ask: number | null;
+  mid: number | null;
+  last: number | null;
+};
+
+/** Build an OCC option symbol (SPY260619C00500000) from the human-readable
+ * fields. Returns null if any input is malformed — caller falls through to
+ * the chain IV. */
+function buildOccSymbol(
+  underlying: string,
+  expiration: string,
+  isCall: boolean,
+  strike: number,
+): string | null {
+  if (!underlying || !expiration || !Number.isFinite(strike) || strike <= 0) {
+    return null;
+  }
+  const m = expiration.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const yy = m[1].slice(2);
+  const mm = m[2];
+  const dd = m[3];
+  const cp = isCall ? "C" : "P";
+  const strikeInt = Math.round(strike * 1000).toString().padStart(8, "0");
+  return `${underlying.toUpperCase()}${yy}${mm}${dd}${cp}${strikeInt}`;
+}
+
 export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
   const [chain, setChain] = useState<ChainResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -123,8 +153,61 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
     return null;
   }, [option, spot, daysToExp]);
 
+  // Real-time IV + mid from Alpaca's option snapshot for this exact strike.
+  // Used when there's no broker mark (custom-built options or guest view) so
+  // we don't fall back to yfinance's potentially-delayed chain IV. The mid
+  // also seeds chainMark when the chain row is sparse (no published quote),
+  // letting the calculator still resolve `ready` and render the chart.
+  const [alpacaIv, setAlpacaIv] = useState<number | null>(null);
+  const [alpacaMid, setAlpacaMid] = useState<number | null>(null);
+  useEffect(() => {
+    setAlpacaIv(null);
+    setAlpacaMid(null);
+    if (
+      !option ||
+      !option.underlying ||
+      !option.expiration ||
+      option.strike == null ||
+      spot == null ||
+      daysToExp == null
+    ) {
+      return;
+    }
+    const occ = buildOccSymbol(
+      option.underlying,
+      option.expiration,
+      (option.option_type ?? "").toLowerCase() === "call",
+      option.strike,
+    );
+    if (!occ) return;
+    let cancelled = false;
+    api
+      .get<OptionSnapshot>(`/options/snapshot?occ=${occ}`)
+      .then((snap) => {
+        if (cancelled) return;
+        const mid = snap.mid ?? snap.last;
+        if (!mid || mid <= 0) return;
+        setAlpacaMid(mid);
+        const isCallNow = (option.option_type ?? "").toLowerCase() === "call";
+        const solved = impliedVol(mid, spot, option.strike!, daysToExp, isCallNow);
+        if (solved != null && solved > 0) setAlpacaIv(solved);
+      })
+      .catch(() => {
+        // Snapshot failed (no Alpaca creds, illiquid strike, etc.) — silently
+        // fall through to chain IV.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [option, spot, daysToExp]);
+
   // User can override the IV used for projections (matches OPC's "IV CHANGE"
-  // control). Default = solvedIv (broker-mark IV) if available, else chainIv.
+  // control). Default cascade:
+  //   1. solvedIv  — back-solved from the broker's per-share mark (most
+  //      authoritative for owned positions)
+  //   2. alpacaIv  — solved from the live Alpaca bid/ask mid (real-time
+  //      market price for the exact strike)
+  //   3. chainIv   — yfinance's published IV (delayed ~15 min)
   // null means "use the default"; reset clears the override.
   const [userIv, setUserIv] = useState<number | null>(null);
   // When the option changes (e.g. user opens a different option), clear any
@@ -132,29 +215,34 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
   useEffect(() => {
     setUserIv(null);
   }, [option?.ticker, option?.strike, option?.expiration]);
-  const defaultIv = solvedIv ?? chainIv;
+  const defaultIv = solvedIv ?? alpacaIv ?? chainIv;
   const iv = userIv ?? defaultIv;
-  const ivSource: "user" | "broker" | "chain" | "none" =
+  const ivSource: "user" | "broker" | "alpaca" | "chain" | "none" =
     userIv != null
       ? "user"
       : solvedIv != null
         ? "broker"
-        : chainIv != null
-          ? "chain"
-          : "none";
+        : alpacaIv != null
+          ? "alpaca"
+          : chainIv != null
+            ? "chain"
+            : "none";
 
   // The backend strips quantity + avg_cost from options in public/guest mode
   // (those are private). Fall back to a synthetic baseline so the projection
   // still works — 1 contract at the current chain mid. The header surfaces
   // this so guests understand the values are illustrative, not their position.
   const chainMark: number | null = useMemo(() => {
-    if (!matchedRow) return null;
-    if (matchedRow.last && matchedRow.last > 0) return matchedRow.last;
-    if (matchedRow.bid > 0 && matchedRow.ask > 0) {
-      return (matchedRow.bid + matchedRow.ask) / 2;
+    if (matchedRow) {
+      if (matchedRow.last && matchedRow.last > 0) return matchedRow.last;
+      if (matchedRow.bid > 0 && matchedRow.ask > 0) {
+        return (matchedRow.bid + matchedRow.ask) / 2;
+      }
     }
-    return null;
-  }, [matchedRow]);
+    // Chain was sparse (no published quote on this strike) — use the live
+    // Alpaca mid as the working mark so the calculator still resolves.
+    return alpacaMid;
+  }, [matchedRow, alpacaMid]);
   const isSyntheticPosition =
     !!option && (option.avg_cost == null || !Number.isFinite(option.quantity));
   const effectiveAvgCost = option?.avg_cost ?? chainMark;
@@ -562,7 +650,7 @@ function IvInput({
 }: {
   iv: number;
   defaultIv: number;
-  source: "user" | "broker" | "chain" | "none";
+  source: "user" | "broker" | "alpaca" | "chain" | "none";
   onChange: (v: number | null) => void;
 }) {
   // Local text state so users can type freely (e.g. clear and retype) without
@@ -577,9 +665,11 @@ function IvInput({
       ? "user"
       : source === "broker"
         ? "from broker mark"
-        : source === "chain"
-          ? "from chain"
-          : "—";
+        : source === "alpaca"
+          ? "from market quote"
+          : source === "chain"
+            ? "from chain"
+            : "—";
   return (
     <div className="flex items-center gap-1.5 text-xs">
       <span className="text-(--color-text-dim)">IV</span>
