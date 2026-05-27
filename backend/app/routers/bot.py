@@ -14,6 +14,7 @@ Endpoints are owner-only:
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -26,6 +27,20 @@ from ..services.bot import safety
 from ..services.bot.backtest import BacktestConfig, run_backtest, run_iv_shock
 
 router = APIRouter(prefix="/bot", tags=["bot"])
+
+
+def _iso_utc(dt: datetime | None) -> str | None:
+    """Serialize a naive UTC datetime as ISO-8601 with a `Z` suffix so JS's
+    `new Date(...)` parses it as UTC instead of local time. SQLAlchemy stores
+    `datetime.utcnow()` naive — without this the frontend's display is off
+    by the user's UTC offset (e.g. ET trades show up looking after-hours)."""
+    if dt is None:
+        return None
+    s = dt.isoformat()
+    # Already has a tz marker (+00:00 or Z) → leave as-is.
+    if s.endswith("Z") or "+" in s or s.count("-") > 2:
+        return s
+    return s + "Z"
 
 
 def _require_owner(request: Request) -> None:
@@ -56,7 +71,7 @@ def status(request: Request, db: Session = Depends(get_db)) -> dict[str, Any]:
     )
     return {
         "running": bool(state.running),
-        "last_tick": state.last_tick.isoformat() if state.last_tick else None,
+        "last_tick": _iso_utc(state.last_tick),
         "day_date": state.day_date,
         "day_pnl": state.day_pnl,
         "daily_loss_cap_hit": bool(state.daily_loss_cap_hit),
@@ -97,7 +112,7 @@ def signals(
     return [
         {
             "id": r.id,
-            "detected_at": r.detected_at.isoformat(),
+            "detected_at": _iso_utc(r.detected_at),
             "side": r.side,
             "spot": r.spot,
             "prior_extreme_price": r.prior_extreme_price,
@@ -242,11 +257,11 @@ def trades(
             "occ_symbol": r.occ_symbol,
             "side": r.side,
             "qty": r.qty,
-            "entry_at": r.entry_at.isoformat(),
+            "entry_at": _iso_utc(r.entry_at),
             "entry_price": r.entry_price,
             "tp_price": r.tp_price,
             "sl_price": r.sl_price,
-            "exit_at": r.exit_at.isoformat() if r.exit_at else None,
+            "exit_at": _iso_utc(r.exit_at),
             "exit_price": r.exit_price,
             "exit_reason": r.exit_reason,
             "realized_pnl": r.realized_pnl,

@@ -278,24 +278,61 @@ function TradesPanel({ trades }: { trades: BotTradeRow[] }) {
             <thead className="text-(--color-text-dim)">
               <tr>
                 <th className="text-left font-normal">Entry</th>
-                <th className="text-left font-normal">Side</th>
+                <th className="text-left font-normal">Contract</th>
                 <th className="text-right font-normal">Qty</th>
                 <th className="text-right font-normal">Entry $</th>
-                <th className="text-right font-normal">Exit</th>
+                <th className="text-right font-normal">TP / SL</th>
+                <th className="text-right font-normal">Exit $</th>
+                <th className="text-left font-normal">Exit time</th>
                 <th className="text-right font-normal">P/L</th>
               </tr>
             </thead>
             <tbody>
-              {trades.map((t) => (
+              {trades.map((t) => {
+                const parsed = parseOcc(t.occ_symbol);
+                const dur =
+                  t.exit_at != null
+                    ? formatDuration(
+                        new Date(t.exit_at).getTime() -
+                          new Date(t.entry_at).getTime(),
+                      )
+                    : null;
+                return (
                 <tr
                   key={t.id}
                   className="border-t border-(--color-border) tabular-nums"
                 >
                   <td className="py-1.5">{fmtTime(t.entry_at)}</td>
-                  <td className="py-1.5 capitalize">{t.side}</td>
+                  <td className="py-1.5 text-[11px]">
+                    {parsed ? (
+                      <span>
+                        {parsed.underlying}{" "}
+                        <span className="text-(--color-text-dim)">
+                          ${parsed.strike}
+                          {parsed.side[0].toUpperCase()}
+                        </span>{" "}
+                        <span className="text-(--color-text-dim)">
+                          {parsed.expiration}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-(--color-text-dim)">
+                        {t.occ_symbol}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-1.5 text-right">{t.qty}</td>
                   <td className="py-1.5 text-right">
                     ${fmtPrice(t.entry_price)}
+                  </td>
+                  <td className="py-1.5 text-right text-[10px] text-(--color-text-dim)">
+                    <span className="text-(--color-up)">
+                      ${fmtPrice(t.tp_price)}
+                    </span>{" "}
+                    /{" "}
+                    <span className="text-(--color-down)">
+                      ${fmtPrice(t.sl_price)}
+                    </span>
                   </td>
                   <td className="py-1.5 text-right">
                     {t.exit_at ? (
@@ -309,6 +346,20 @@ function TradesPanel({ trades }: { trades: BotTradeRow[] }) {
                       <span className="text-(--color-accent)">Open</span>
                     )}
                   </td>
+                  <td className="py-1.5 text-[11px] text-(--color-text-dim)">
+                    {t.exit_at ? (
+                      <span>
+                        {fmtTime(t.exit_at)}
+                        {dur && (
+                          <span className="ml-1 text-[10px]">
+                            ({dur})
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td
                     className={`py-1.5 text-right ${changeClass(t.realized_pnl)}`}
                   >
@@ -317,13 +368,42 @@ function TradesPanel({ trades }: { trades: BotTradeRow[] }) {
                       : `${t.realized_pnl >= 0 ? "+" : "-"}$${fmtPrice(Math.abs(t.realized_pnl))}`}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
     </div>
   );
+}
+
+/** Parse an OCC option symbol like "SPY260527C00750000" into readable
+ * fields: SPY / 2026-05-27 / 750 / call. Returns null on malformed input. */
+function parseOcc(
+  occ: string,
+): { underlying: string; expiration: string; side: "call" | "put"; strike: number } | null {
+  const m = occ.match(/^([A-Z]+)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/);
+  if (!m) return null;
+  const [, underlying, yy, mm, dd, cp, strikeStr] = m;
+  const year = 2000 + parseInt(yy, 10);
+  const expiration = `${year}-${mm}-${dd}`;
+  const strike = parseInt(strikeStr, 10) / 1000;
+  return {
+    underlying,
+    expiration,
+    side: cp === "C" ? "call" : "put",
+    strike,
+  };
+}
+
+function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "";
+  const min = Math.floor(ms / 60_000);
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `${h}h${m}m` : `${h}h`;
 }
 
 function SignalsPanel({ signals }: { signals: BotSignalRow[] }) {
