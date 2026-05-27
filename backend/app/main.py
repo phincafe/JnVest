@@ -21,6 +21,7 @@ from .routers import (
     positions,
     snaptrade,
     stock,
+    theme_watch,
     watchlist,
 )
 from .services import streamer
@@ -163,6 +164,7 @@ app.include_router(positions.router, prefix="/api")
 # removed from the UI. Restore by re-adding `app.include_router(orders.router, prefix="/api")`.
 app.include_router(snaptrade.router, prefix="/api")
 app.include_router(buy_watch.router, prefix="/api")
+app.include_router(theme_watch.router, prefix="/api")
 app.include_router(bot.router, prefix="/api")
 
 

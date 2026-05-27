@@ -174,6 +174,96 @@ def _compute_status(
     return ("far", distance_pct)
 
 
+def _enrich_one(
+    symbol: str,
+    rule: str,
+    target_price: float | None,
+    threshold: float | None,
+    bars_for_symbol: list[dict[str, Any]],
+    trade: dict[str, Any],
+    *,
+    target_id: int | None = None,
+    note: str | None = None,
+    sort_order: int = 0,
+) -> dict[str, Any]:
+    """Compute the full enriched target row (last, SMAs, RSI, trigger, status,
+    smart score) for a single ticker. Pure-ish: takes pre-fetched bars and
+    trade payloads, no I/O. Used by both /buy-watch and /theme-watch."""
+    sym = symbol.upper()
+    last = float(trade.get("p") or 0) or (
+        float(bars_for_symbol[-1].get("c") or 0) if bars_for_symbol else 0.0
+    )
+    closes = [float(b.get("c") or 0) for b in bars_for_symbol if b.get("c")]
+    high_52w = max(closes[-252:]) if len(closes) >= 1 else None
+    low_52w = min(closes[-252:]) if len(closes) >= 1 else None
+    sma20 = sum(closes[-20:]) / 20 if len(closes) >= 20 else None
+    sma50 = sum(closes[-50:]) / 50 if len(closes) >= 50 else None
+    sma200 = sum(closes[-200:]) / 200 if len(closes) >= 200 else None
+    rsi_val = rsi(closes, 14)[-1] if len(closes) >= 15 else None
+    trigger = _trigger_price(rule, target_price, threshold, high_52w, sma20, sma50, sma200)
+    smart_score, smart_components = _smart_score(last, high_52w, sma50, sma200, rsi_val)
+    status, distance = _compute_status(
+        last, trigger, rule, rsi_val, threshold, smart_score=smart_score
+    )
+    off_high_pct = ((last - high_52w) / high_52w * 100.0) if (high_52w and last) else None
+    return {
+        "id": target_id,
+        "symbol": sym,
+        "rule": rule,
+        "target_price": target_price,
+        "threshold": threshold,
+        "note": note,
+        "sort_order": sort_order,
+        "last": last,
+        "high_52w": high_52w,
+        "low_52w": low_52w,
+        "off_high_pct": off_high_pct,
+        "sma20": sma20,
+        "sma50": sma50,
+        "sma200": sma200,
+        "rsi14": rsi_val,
+        "trigger_price": trigger,
+        "distance_pct": distance,
+        "status": status,
+        "smart_score": round(smart_score, 1),
+        "smart_components": {k: round(v, 1) for k, v in smart_components.items()},
+    }
+
+
+_STATUS_ORDER = {"in_zone": 0, "near": 1, "far": 2, "unknown": 3}
+
+
+async def _enrich_targets(targets: list[BuyTarget]) -> list[dict[str, Any]]:
+    """Fetch bars + latest trades for all symbols at once, then enrich each
+    target. Sorted: in_zone first, then near, then far."""
+    if not targets:
+        return []
+    symbols = sorted({t.symbol.upper() for t in targets})
+    try:
+        trades = await alpaca.latest_trades(symbols)
+        bars = await alpaca.daily_bars(symbols, days=280)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
+    out: list[dict[str, Any]] = []
+    for t in targets:
+        sym = t.symbol.upper()
+        out.append(
+            _enrich_one(
+                sym,
+                t.rule,
+                t.target_price,
+                t.threshold,
+                bars.get(sym) or [],
+                trades.get(sym, {}),
+                target_id=t.id,
+                note=t.note,
+                sort_order=t.sort_order,
+            )
+        )
+    out.sort(key=lambda x: (_STATUS_ORDER.get(x["status"], 3), x.get("distance_pct") or 0))
+    return out
+
+
 @router.get("")
 async def list_targets(db: Session = Depends(get_db)) -> dict[str, Any]:
     """Returns all buy targets enriched with current price, computed signals
@@ -183,71 +273,7 @@ async def list_targets(db: Session = Depends(get_db)) -> dict[str, Any]:
     )
     if not rows:
         return {"targets": []}
-
-    symbols = sorted({r.symbol.upper() for r in rows})
-    try:
-        trades = await alpaca.latest_trades(symbols)
-        # 280 calendar days ≈ enough for 52w high (need ~252 trading days) with buffer.
-        bars = await alpaca.daily_bars(symbols, days=280)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
-
-    out: list[dict[str, Any]] = []
-    for r in rows:
-        sym = r.symbol.upper()
-        sym_bars = bars.get(sym) or []
-        trade = trades.get(sym, {})
-        last = float(trade.get("p") or 0) or (
-            float(sym_bars[-1].get("c") or 0) if sym_bars else 0.0
-        )
-        closes = [float(b.get("c") or 0) for b in sym_bars if b.get("c")]
-        high_52w = max(closes[-252:]) if len(closes) >= 1 else None
-        low_52w = min(closes[-252:]) if len(closes) >= 1 else None
-        sma20 = sum(closes[-20:]) / 20 if len(closes) >= 20 else None
-        sma50 = sum(closes[-50:]) / 50 if len(closes) >= 50 else None
-        sma200 = sum(closes[-200:]) / 200 if len(closes) >= 200 else None
-        rsi_val = rsi(closes, 14)[-1] if len(closes) >= 15 else None
-
-        trigger = _trigger_price(
-            r.rule, r.target_price, r.threshold, high_52w, sma20, sma50, sma200
-        )
-        smart_score, smart_components = _smart_score(last, high_52w, sma50, sma200, rsi_val)
-        status, distance = _compute_status(
-            last, trigger, r.rule, rsi_val, r.threshold, smart_score=smart_score
-        )
-        off_high_pct = ((last - high_52w) / high_52w * 100.0) if (high_52w and last) else None
-
-        out.append(
-            {
-                "id": r.id,
-                "symbol": sym,
-                "rule": r.rule,
-                "target_price": r.target_price,
-                "threshold": r.threshold,
-                "note": r.note,
-                "sort_order": r.sort_order,
-                "last": last,
-                "high_52w": high_52w,
-                "low_52w": low_52w,
-                "off_high_pct": off_high_pct,
-                "sma20": sma20,
-                "sma50": sma50,
-                "sma200": sma200,
-                "rsi14": rsi_val,
-                "trigger_price": trigger,
-                "distance_pct": distance,
-                "status": status,
-                # Always compute the smart score so the UI can show it as
-                # context even when the user picked a non-smart rule.
-                "smart_score": round(smart_score, 1),
-                "smart_components": {k: round(v, 1) for k, v in smart_components.items()},
-            }
-        )
-
-    # Sort: in_zone first, then near, then far — most actionable on top.
-    order = {"in_zone": 0, "near": 1, "far": 2, "unknown": 3}
-    out.sort(key=lambda x: (order.get(x["status"], 3), x.get("distance_pct") or 0))
-    return {"targets": out}
+    return {"targets": await _enrich_targets(rows)}
 
 
 def _require_owner(request: Request) -> None:
