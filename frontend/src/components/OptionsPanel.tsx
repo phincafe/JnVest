@@ -213,7 +213,11 @@ function TermStructureCard({ iv }: { iv: IvSummary | null }) {
       {!iv ? (
         <Skeleton className="mt-2 h-32 w-full" />
       ) : iv.term_structure.length === 0 ? (
-        <div className="mt-2 text-sm text-(--color-text-dim)">No data.</div>
+        <div className="mt-2 text-xs text-(--color-text-dim)">
+          No IV data — either this ticker has no listed options or yfinance
+          is rate-limiting our backend right now. Try a different ticker, or
+          retry in a minute.
+        </div>
       ) : (
         <div className="mt-2 h-32">
           <ResponsiveContainer width="100%" height="100%">
@@ -258,7 +262,11 @@ function SkewCard({ iv }: { iv: IvSummary | null }) {
       {!iv ? (
         <Skeleton className="mt-2 h-32 w-full" />
       ) : iv.skew.length === 0 ? (
-        <div className="mt-2 text-sm text-(--color-text-dim)">No data.</div>
+        <div className="mt-2 text-xs text-(--color-text-dim)">
+          No skew data — needs at least one expiration with both call and
+          put IVs available. Thinly-traded tickers often show this until
+          volume picks up.
+        </div>
       ) : (
         <div className="mt-2 h-32">
           <ResponsiveContainer width="100%" height="100%">
@@ -372,7 +380,7 @@ function ChainTable({
       <div className="py-6 text-center text-sm text-(--color-text-dim)">
         {liquidOnly && totalStrikes > 0
           ? `No liquid strikes (${totalStrikes} total — turn off "Liquid only" to see them).`
-          : "No contracts."}
+          : "No contracts for this expiration. Try another expiration or check that the ticker has listed options."}
       </div>
     );
   }
