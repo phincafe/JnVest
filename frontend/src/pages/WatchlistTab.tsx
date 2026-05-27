@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, Search } from "lucide-react";
 import { AiWatch } from "../components/AiWatch";
+import { WhWatch } from "../components/WhWatch";
 import { BuyWatch } from "../components/BuyWatch";
 import { StockDetail } from "../components/StockDetail";
 import { Watchlist } from "../components/Watchlist";
@@ -16,12 +17,13 @@ type Props = {
   isGuest?: boolean;
 };
 
-type ListKey = "holdings" | "buy" | "ai" | "wsb";
+type ListKey = "holdings" | "buy" | "ai" | "wsb" | "wh";
 const LIST_TABS: { key: ListKey; label: string }[] = [
   { key: "holdings", label: "Holdings" },
   { key: "buy", label: "Buy Watch" },
   { key: "ai", label: "AI Watch" },
   { key: "wsb", label: "WSB" },
+  { key: "wh", label: "WH Watch" },
 ];
 
 export default function WatchlistTab({
@@ -83,6 +85,9 @@ export default function WatchlistTab({
           )}
           {activeList === "ai" && (
             <AiWatch refreshNonce={refreshNonce} onSelect={setSelected} />
+          )}
+          {activeList === "wh" && (
+            <WhWatch refreshNonce={refreshNonce} onSelect={setSelected} />
           )}
           {activeList === "wsb" && (
             <WsbPulse refreshNonce={refreshNonce} onSelect={setSelected} />
