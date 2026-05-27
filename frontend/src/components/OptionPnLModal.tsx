@@ -963,7 +963,18 @@ function PnLHeatmap({
                 <td
                   className={`sticky left-0 bg-(--color-panel) px-2 py-1 text-left font-medium ${isAtSpot ? "text-(--color-accent)" : ""}`}
                 >
-                  ${rowPrice.toFixed(2)}
+                  <div className="leading-tight">
+                    <div>${rowPrice.toFixed(2)}</div>
+                    {(() => {
+                      const pctFromSpot = spot > 0 ? ((rowPrice - spot) / spot) * 100 : 0;
+                      return (
+                        <div className="text-[9px] font-normal opacity-70">
+                          {pctFromSpot >= 0 ? "+" : ""}
+                          {pctFromSpot.toFixed(1)}%
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </td>
                 {cols.map((_, ci) => {
                   const v = grid.cells[ri][ci];
