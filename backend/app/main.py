@@ -13,6 +13,7 @@ from .config import get_settings
 from .db import Base, SessionLocal, engine
 from .models import WatchlistTicker
 from .routers import (
+    alerts,
     bot,
     buy_watch,
     calendar,
@@ -24,7 +25,7 @@ from .routers import (
     theme_watch,
     watchlist,
 )
-from .services import streamer
+from .services import alerts_runner, streamer
 from .services.bot import runner as bot_runner
 
 DEFAULT_WATCHLIST = ["AAPL", "NVDA", "TSLA", "SPY", "QQQ"]
@@ -50,14 +51,17 @@ async def lifespan(_: FastAPI):
     import asyncio
 
     task = asyncio.create_task(bot_runner.loop())
+    alerts_task = asyncio.create_task(alerts_runner.loop())
     try:
         yield
     finally:
-        task.cancel()
-        try:
-            await task
-        except (asyncio.CancelledError, Exception):
-            pass
+        for t in (task, alerts_task):
+            t.cancel()
+        for t in (task, alerts_task):
+            try:
+                await t
+            except (asyncio.CancelledError, Exception):
+                pass
 
 
 app = FastAPI(title="JnVest API", lifespan=lifespan)
@@ -166,6 +170,7 @@ app.include_router(snaptrade.router, prefix="/api")
 app.include_router(buy_watch.router, prefix="/api")
 app.include_router(theme_watch.router, prefix="/api")
 app.include_router(bot.router, prefix="/api")
+app.include_router(alerts.router, prefix="/api")
 
 
 @app.websocket("/api/ws")
