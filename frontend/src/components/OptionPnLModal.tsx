@@ -78,7 +78,20 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
     if (!chain || !option || option.strike == null) return null;
     const rows = isCall ? chain.calls : chain.puts;
     const strike = option.strike;
-    return rows.find((r) => Math.abs(r.strike - strike) < 1e-6) ?? null;
+    // Exact strike match first — this is the path for SnapTrade-imported
+    // positions, where the strike came straight from the chain.
+    const exact = rows.find((r) => Math.abs(r.strike - strike) < 1e-6);
+    if (exact) return exact;
+    // No exact match (custom-built options where the user picked any
+    // strike): fall back to the nearest available strike's IV so the
+    // projection can still be computed. Yields a slightly-off price
+    // model but better than blocking the modal entirely.
+    if (rows.length === 0) return null;
+    return rows.reduce(
+      (best, r) =>
+        Math.abs(r.strike - strike) < Math.abs(best.strike - strike) ? r : best,
+      rows[0],
+    );
   }, [chain, option, isCall]);
 
   const chainIv = matchedRow?.iv ?? null;
@@ -290,15 +303,22 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
                   {effectiveQty > 0 ? "Long" : "Short"} {Math.abs(effectiveQty)} @
                   {" "}$
                   {effectiveAvgCost != null ? fmtPrice(effectiveAvgCost) : "—"}
-                  {option.price > 0 && (
+                  {(() => {
+                    // Owned options: option.price = broker mark. Custom-built
+                    // options have price=0; fall back to the chain mid so the
+                    // "→ $X.XX" still shows where the option is trading.
+                    const displayMark =
+                      option.price > 0 ? option.price : chainMark;
+                    if (displayMark == null || displayMark <= 0) return null;
+                    return (
                     <>
                       {" → "}
                       <span className="text-(--color-text)">
-                        ${fmtPrice(option.price)}
+                        ${fmtPrice(displayMark)}
                       </span>
                       {effectiveAvgCost && effectiveAvgCost > 0 && (() => {
                         const pct =
-                          ((option.price - effectiveAvgCost) /
+                          ((displayMark - effectiveAvgCost) /
                             effectiveAvgCost) *
                           100;
                         return (
@@ -316,7 +336,8 @@ export function OptionPnLModal({ option, onClose, isGuest = false }: Props) {
                         );
                       })()}
                     </>
-                  )}
+                    );
+                  })()}
                 </>
               )}
               {iv != null && ` · IV ${(iv * 100).toFixed(1)}%`}
