@@ -201,75 +201,70 @@ async def stock_fundamentals(symbol: str) -> dict[str, Any]:
     }
 
     # --- Finnhub (preferred) ---
-    try:
-        metric = await finnhub.basic_financials(sym)
-        out["market_cap"] = metric.get("marketCapitalization")
-        out["trailing_pe"] = metric.get("peTTM") or metric.get("peNormalizedAnnual")
-        out["forward_pe"] = metric.get("peNTM") or metric.get("peExclExtraTTM")
-        out["fifty_two_week_high"] = metric.get("52WeekHigh")
-        out["fifty_two_week_low"] = metric.get("52WeekLow")
-    except Exception:
-        pass
-    try:
-        pt = await finnhub.price_target(sym)
-        out["analyst_target_mean"] = pt.get("targetMean") or pt.get("targetMedian")
-        out["analyst_target_high"] = pt.get("targetHigh")
-        out["analyst_target_low"] = pt.get("targetLow")
-        out["analyst_count"] = pt.get("numberOfAnalysts")
-    except Exception:
-        pass
-    # Recommendation trends: get latest-period buy/hold/sell breakdown + use the
-    # sum as the analyst count if price-target didn't include it.
-    try:
-        recs = await finnhub.recommendation_trends(sym)
-        if recs:
-            latest = recs[0]  # Finnhub orders newest-first
-            sb = int(latest.get("strongBuy") or 0)
-            b = int(latest.get("buy") or 0)
-            h = int(latest.get("hold") or 0)
-            s = int(latest.get("sell") or 0)
-            ss = int(latest.get("strongSell") or 0)
-            total = sb + b + h + s + ss
-            out["analyst_recommendation"] = {
-                "strong_buy": sb,
-                "buy": b,
-                "hold": h,
-                "sell": s,
-                "strong_sell": ss,
-                "total": total,
-                "period": latest.get("period"),
-            }
-            if not out["analyst_count"] and total:
-                out["analyst_count"] = total
-    except Exception:
-        pass
-    try:
-        er = await finnhub.earnings_for_symbol(sym)
-        if er and er.get("date"):
-            out["next_earnings"] = er["date"]
-    except Exception:
-        pass
-    try:
-        history = await finnhub.recent_earnings(sym, limit=1)
-        if history:
-            latest = history[0]
-            out["last_earnings"] = {
-                "period": latest.get("period"),
-                "quarter": latest.get("quarter"),
-                "year": latest.get("year"),
-                "eps_actual": latest.get("actual"),
-                "eps_estimate": latest.get("estimate"),
-                "surprise": latest.get("surprise"),
-                "surprise_percent": latest.get("surprisePercent"),
-            }
-    except Exception:
-        pass
-    try:
-        profile = await finnhub.company_profile(sym)
-        if profile.get("marketCapitalization") and not out["market_cap"]:
-            out["market_cap"] = profile["marketCapitalization"]
-    except Exception:
-        pass
+    # Run all six independent helper calls in parallel. Each is cached
+    # individually, so a warm cache returns near-instantly; a cold cache
+    # used to serialize ~5 sequential Finnhub round-trips (~2-5s) before
+    # this — now they ride together. asyncio.gather with return_exceptions
+    # preserves the existing best-effort behavior (a single failure no
+    # longer cancels the others).
+    import asyncio
+
+    metric_r, pt_r, recs_r, er_r, history_r, profile_r = await asyncio.gather(
+        finnhub.basic_financials(sym),
+        finnhub.price_target(sym),
+        finnhub.recommendation_trends(sym),
+        finnhub.earnings_for_symbol(sym),
+        finnhub.recent_earnings(sym, limit=1),
+        finnhub.company_profile(sym),
+        return_exceptions=True,
+    )
+    if not isinstance(metric_r, Exception):
+        out["market_cap"] = metric_r.get("marketCapitalization")
+        out["trailing_pe"] = metric_r.get("peTTM") or metric_r.get("peNormalizedAnnual")
+        out["forward_pe"] = metric_r.get("peNTM") or metric_r.get("peExclExtraTTM")
+        out["fifty_two_week_high"] = metric_r.get("52WeekHigh")
+        out["fifty_two_week_low"] = metric_r.get("52WeekLow")
+    if not isinstance(pt_r, Exception):
+        out["analyst_target_mean"] = pt_r.get("targetMean") or pt_r.get("targetMedian")
+        out["analyst_target_high"] = pt_r.get("targetHigh")
+        out["analyst_target_low"] = pt_r.get("targetLow")
+        out["analyst_count"] = pt_r.get("numberOfAnalysts")
+    # Recommendation trends: latest-period buy/hold/sell breakdown.
+    if not isinstance(recs_r, Exception) and recs_r:
+        latest = recs_r[0]  # Finnhub orders newest-first
+        sb = int(latest.get("strongBuy") or 0)
+        b = int(latest.get("buy") or 0)
+        h = int(latest.get("hold") or 0)
+        s = int(latest.get("sell") or 0)
+        ss = int(latest.get("strongSell") or 0)
+        total = sb + b + h + s + ss
+        out["analyst_recommendation"] = {
+            "strong_buy": sb,
+            "buy": b,
+            "hold": h,
+            "sell": s,
+            "strong_sell": ss,
+            "total": total,
+            "period": latest.get("period"),
+        }
+        if not out["analyst_count"] and total:
+            out["analyst_count"] = total
+    if not isinstance(er_r, Exception) and er_r and er_r.get("date"):
+        out["next_earnings"] = er_r["date"]
+    if not isinstance(history_r, Exception) and history_r:
+        latest = history_r[0]
+        out["last_earnings"] = {
+            "period": latest.get("period"),
+            "quarter": latest.get("quarter"),
+            "year": latest.get("year"),
+            "eps_actual": latest.get("actual"),
+            "eps_estimate": latest.get("estimate"),
+            "surprise": latest.get("surprise"),
+            "surprise_percent": latest.get("surprisePercent"),
+        }
+    if not isinstance(profile_r, Exception):
+        if profile_r.get("marketCapitalization") and not out["market_cap"]:
+            out["market_cap"] = profile_r["marketCapitalization"]
 
     # --- yfinance fallback for ex-dividend (Finnhub free tier doesn't expose it) ---
     try:
