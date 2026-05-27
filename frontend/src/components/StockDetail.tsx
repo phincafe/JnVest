@@ -81,23 +81,40 @@ export function StockDetail({ symbol }: Props) {
     setBars(null);
     setNews(null);
     setFund(null);
-    Promise.all([
+    // Load each panel independently — a 502 on news (Finnhub down /
+    // rate-limited) shouldn't blank the chart or fundamentals. Top-level
+    // error banner only fires when BARS specifically fails, since that's
+    // the data the rest of the page revolves around.
+    const errMsg = (reason: unknown): string =>
+      reason instanceof ApiError
+        ? reason.detail
+        : reason instanceof Error
+          ? reason.message
+          : String(reason);
+    Promise.allSettled([
       api.get<StockBarsResponse>(
         `/stock/${symbol}/bars?range=${range}&timeframe=${encodeURIComponent(timeframe)}`,
       ),
       api.get<StockNewsResponse>(`/stock/${symbol}/news?limit=10`),
       api.get<StockFundamentals>(`/stock/${symbol}/fundamentals`),
-    ])
-      .then(([b, n, f]) => {
-        if (cancelled) return;
-        setBars(b);
-        setNews(n);
-        setFund(f);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        setErr(e instanceof ApiError ? e.detail : (e as Error).message);
-      });
+    ]).then(([b, n, f]) => {
+      if (cancelled) return;
+      if (b.status === "fulfilled") {
+        setBars(b.value);
+      } else {
+        setErr(errMsg(b.reason));
+      }
+      // News failures degrade into the existing warning slot so the panel
+      // renders a dim notice instead of being stuck on the skeleton.
+      if (n.status === "fulfilled") {
+        setNews(n.value);
+      } else {
+        setNews({ items: [], warning: errMsg(n.reason), days_back: 30 });
+      }
+      // Fundamentals: just leave fund=null on failure (its panel already
+      // handles loading/empty states).
+      if (f.status === "fulfilled") setFund(f.value);
+    });
     return () => {
       cancelled = true;
     };
