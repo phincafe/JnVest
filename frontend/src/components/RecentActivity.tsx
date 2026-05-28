@@ -83,7 +83,9 @@ export function RecentActivity({
         status: o.status ?? "",
       }))
       .sort((a, b) => (b.time ?? "").localeCompare(a.time ?? ""))
-      .slice(0, 8);
+      // Headroom: each column shows up to 10, so keep enough sorted orders
+      // around to populate both even when one side dominates.
+      .slice(0, 30);
   }, [data]);
 
   if (!data) return <Skeleton className="h-32" />;
@@ -113,14 +115,14 @@ export function RecentActivity({
           title="Newly added"
           icon={ArrowDownToLine}
           accent="up"
-          items={opens.slice(0, 5)}
+          items={opens.slice(0, 10)}
           isGuest={isGuest}
         />
         <ActivityList
           title="Recently closed"
           icon={ArrowUpFromLine}
           accent="down"
-          items={closes.slice(0, 5)}
+          items={closes.slice(0, 10)}
           isGuest={isGuest}
         />
       </div>
