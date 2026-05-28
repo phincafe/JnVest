@@ -104,96 +104,133 @@ async def today(db: Session = Depends(get_db)) -> dict[str, Any]:
     }
 
 
-# Curated list of high-profile rumored / anticipated IPOs that don't appear
-# on Finnhub's calendar yet (no S-1 filed, no fixed date) but are heavily
-# watched by the market. Each entry pairs the company with related public
-# tickers that historically move in sympathy when the IPO narrative shifts
-# — useful for the user to spot a "pre-IPO" entry point without buying
-# private shares.
+# Curated list of high-profile pre-IPO names the market is watching. This is
+# hand-maintained — NOT a live data feed. Each entry has a `last_verified`
+# date so the UI can flag staleness. Update the data + bump the date when
+# filings / valuations move.
 #
-# Edit this list as filings / news shift. Don't bake in price predictions
-# or "expected dates" with high confidence; treat est_timing as rumor.
-WATCHED_RUMORED_IPOS: list[dict[str, Any]] = [
+# `filing_status`:
+#   "filed"               → public S-1 on file with SEC, listing imminent
+#   "confidential_filed"  → confidential S-1 filed, public S-1 not yet posted
+#   "rumored"             → no S-1, but market widely expects a listing window
+#   "no_timeline"         → company has not committed to going public
+#
+# When a name actually lists, REMOVE it from this list — Finnhub's confirmed
+# calendar will pick it up, and live trading data lives in the main app.
+WATCHED_UPCOMING_IPOS: list[dict[str, Any]] = [
     {
         "name": "SpaceX",
         "sector": "Space / aerospace",
-        "est_valuation_usd": "$350-400B",
-        "est_timing": "2026 (rumored, no S-1 filed)",
+        "filing_status": "filed",
+        "ticker": "SPCX",
+        "est_valuation_usd": "~$1.75T target",
+        "est_timing": "Listing ~June 12, 2026 (S-1 filed May 20, 2026)",
         "why_it_matters": (
-            "Would be the largest IPO in history. Sets the public-market "
-            "valuation anchor for the entire space economy. Starlink alone "
-            "is rumored to be carved out separately."
+            "Largest IPO in history if priced near the target. Sets the "
+            "public-market valuation anchor for the entire space economy. "
+            "S-1 disclosed 2025 revenue of $18.7B (Starlink: $11.4B) and a "
+            "$4.94B GAAP net loss. Goldman Sachs leading a 21-bank syndicate."
         ),
         "related_tickers": ["RKLB", "ASTS", "LUNR", "RDW", "BA"],
+        "source_url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001181412",
+        "last_verified": "2026-05-27",
     },
     {
-        "name": "Stripe",
-        "sector": "Fintech / payments",
-        "est_valuation_usd": "$70-100B",
-        "est_timing": "2026 (long-rumored, employee tender at $91.5B in 2025)",
+        "name": "OpenAI",
+        "sector": "AI labs",
+        "filing_status": "confidential_filed",
+        "ticker": None,
+        "est_valuation_usd": "$852B – $1T+ target",
+        "est_timing": "Confidential S-1 filed May 22, 2026; targeting Q3-Q4 2026 listing",
         "why_it_matters": (
-            "Largest private payments processor. Public listing would reset "
-            "the fintech sector's multiples. Bellwether for PYPL / SQ / "
-            "ADYEY."
+            "If priced above $1T it would be the second-largest IPO ever "
+            "alongside SpaceX. Last private round (Mar 2026) closed at $852B. "
+            "2025 revenue $13.1B against ~$22B in spend. Goldman + Morgan "
+            "Stanley leading."
         ),
-        "related_tickers": ["PYPL", "SQ", "V", "MA"],
-    },
-    {
-        "name": "Databricks",
-        "sector": "AI / data infrastructure",
-        "est_valuation_usd": "$60-70B",
-        "est_timing": "2026 (Series J at $62B, S-1 rumors)",
-        "why_it_matters": (
-            "Direct comp for Snowflake. An IPO would crystallize the enterprise "
-            "AI-infra premium and likely re-rate SNOW / MDB / PLTR."
-        ),
-        "related_tickers": ["SNOW", "MDB", "PLTR", "DDOG"],
-    },
-    {
-        "name": "Klarna",
-        "sector": "Fintech / BNPL",
-        "est_valuation_usd": "$15-20B",
-        "est_timing": "F-1 filed 2025, listing pending",
-        "why_it_matters": (
-            "BNPL bellwether — KLAR's pricing will signal whether the sector "
-            "has recovered from the 2022-23 valuation crash. Watched closely "
-            "by AFRM holders."
-        ),
-        "related_tickers": ["AFRM", "PYPL", "SQ"],
+        "related_tickers": ["MSFT", "NVDA", "AMD", "GOOGL", "AMZN"],
+        "source_url": "https://fortune.com/2026/05/22/openai-ipo-filing-1-trillion-may-finally-answer-these-big-questions/",
+        "last_verified": "2026-05-27",
     },
     {
         "name": "Discord",
         "sector": "Consumer social",
-        "est_valuation_usd": "$15B",
-        "est_timing": "2026 (rumored, no S-1)",
+        "filing_status": "filed",
+        "ticker": None,
+        "est_valuation_usd": "~$15B target",
+        "est_timing": "Confidential S-1 filed Jan 2026; public S-1 on file, H2 2026 target",
         "why_it_matters": (
-            "Rare standalone consumer-social IPO since Reddit. Pricing will "
-            "set expectations for the next wave of community-platform listings."
+            "Rare standalone consumer-social IPO since Reddit. ~$550M ARR. "
+            "Pricing will set expectations for the next wave of community-"
+            "platform listings. Goldman + JPMorgan underwriting."
         ),
         "related_tickers": ["RDDT", "META", "PINS"],
+        "source_url": "https://cryptobriefing.com/discord-s-1-filing-boosts-ipo-prospects-before-2027/",
+        "last_verified": "2026-05-27",
+    },
+    {
+        "name": "Databricks",
+        "sector": "AI / data infrastructure",
+        "filing_status": "rumored",
+        "ticker": None,
+        "est_valuation_usd": "$134B (Dec 2025 Series L)",
+        "est_timing": "H2 2026 expected; no S-1 on file yet",
+        "why_it_matters": (
+            "Direct comp for Snowflake. $4.8-5B revenue run-rate growing "
+            "~55% YoY. An IPO would crystallize the enterprise AI-infra "
+            "premium and likely re-rate SNOW / MDB / PLTR."
+        ),
+        "related_tickers": ["SNOW", "MDB", "PLTR", "DDOG"],
+        "source_url": "https://www.allied.vc/articles/databricks-ipo-expectations-key-dates-valuation-risks",
+        "last_verified": "2026-05-27",
+    },
+    {
+        "name": "Stripe",
+        "sector": "Fintech / payments",
+        "filing_status": "no_timeline",
+        "ticker": None,
+        "est_valuation_usd": "~$159B (Apr 2026 tender)",
+        "est_timing": "No S-1 filed; Collisons publicly resistant",
+        "why_it_matters": (
+            "Largest private payments processor. John Collison (early 2026): "
+            "an IPO would be 'a solution in search of a problem'. If/when "
+            "it lists it would reset fintech multiples — bellwether for "
+            "PYPL / SQ / ADYEY."
+        ),
+        "related_tickers": ["PYPL", "SQ", "V", "MA", "ADYEY"],
+        "source_url": "https://ipos.fyi/tracker/stripe-ipo",
+        "last_verified": "2026-05-27",
     },
     {
         "name": "Anthropic",
         "sector": "AI labs",
-        "est_valuation_usd": "$60B+ (private)",
-        "est_timing": "No timeline (PBC structure complicates a traditional IPO)",
+        "filing_status": "rumored",
+        "ticker": None,
+        "est_valuation_usd": "$380B (Feb 2026 Series G); secondaries imply ~$1T",
+        "est_timing": "Q4 2026 discussed by bankers; no S-1 filed",
         "why_it_matters": (
-            "If/when it lists, it would be the first pure-play AI-lab public "
-            "comp alongside the Microsoft-tied OpenAI structure. Indirect "
-            "exposure today via cloud and hyperscaler stocks."
+            "Pure-play AI lab; PBC structure complicates a traditional IPO. "
+            "Run-rate revenue reportedly surpassed $30B (up from ~$9B end of "
+            "2025). Bankers expect a $60B+ raise if/when it lists."
         ),
-        "related_tickers": ["GOOGL", "MSFT", "AMZN", "NVDA"],
+        "related_tickers": ["GOOGL", "AMZN", "MSFT", "NVDA"],
+        "source_url": "https://finance.yahoo.com/news/anthropic-plans-ipo-early-2026-004854547.html",
+        "last_verified": "2026-05-27",
     },
 ]
+
+# Keep the old name as an alias for any external imports — will remove next
+# release.
+WATCHED_RUMORED_IPOS = WATCHED_UPCOMING_IPOS
 
 
 @router.get("/ipos")
 async def ipos(days_ahead: int = 30) -> dict[str, Any]:
-    """Upcoming IPO calendar — confirmed (from Finnhub) + curated rumored
-    mega-IPOs (hardcoded server-side, edited via WATCHED_RUMORED_IPOS).
+    """Upcoming IPO calendar — confirmed (from Finnhub) + curated watched
+    mega-IPOs (hardcoded server-side, edited via WATCHED_UPCOMING_IPOS).
 
-    `days_ahead` only filters the confirmed list (rumored entries have no
-    fixed date so they're always returned)."""
+    `days_ahead` only filters the confirmed list. Watched entries are always
+    returned and carry a `last_verified` date so the UI can flag staleness."""
     try:
         confirmed_raw = await finnhub.ipo_calendar(days_ahead=days_ahead)
         confirmed_warning: str | None = None
@@ -220,8 +257,20 @@ async def ipos(days_ahead: int = 30) -> dict[str, Any]:
         )
     confirmed.sort(key=lambda x: x.get("date") or "")
 
+    # Sort watched list so filed names appear first (most actionable).
+    status_order = {
+        "filed": 0,
+        "confidential_filed": 1,
+        "rumored": 2,
+        "no_timeline": 3,
+    }
+    rumored = sorted(
+        WATCHED_UPCOMING_IPOS,
+        key=lambda x: status_order.get(x.get("filing_status", "rumored"), 99),
+    )
+
     return {
         "confirmed": confirmed,
         "confirmed_warning": confirmed_warning,
-        "rumored": WATCHED_RUMORED_IPOS,
+        "rumored": rumored,
     }
