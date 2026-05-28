@@ -96,11 +96,13 @@ export function Calendar({ refreshNonce }: { refreshNonce: number }) {
           {err}
         </div>
       )}
+      {/* IPOs above the econ/earnings grid — the SpaceX-class events are
+          the headline reason most users open the Calendar tab. */}
+      <IpoSection refreshNonce={refreshNonce} />
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <EconCard data={data} />
         <EarningsCard data={data} />
       </div>
-      <IpoSection refreshNonce={refreshNonce} />
     </section>
   );
 }
