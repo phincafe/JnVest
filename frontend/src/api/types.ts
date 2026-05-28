@@ -156,6 +156,32 @@ export type CalendarResponse = {
   earnings_warning: string | null;
 };
 
+export type ConfirmedIpo = {
+  date: string | null;
+  name: string | null;
+  symbol: string | null;
+  exchange: string | null;
+  price_range: string | null;
+  shares: number | null;
+  total_value_usd: number | null;
+  status: string | null;
+};
+
+export type RumoredIpo = {
+  name: string;
+  sector: string;
+  est_valuation_usd: string;
+  est_timing: string;
+  why_it_matters: string;
+  related_tickers: string[];
+};
+
+export type IpoCalendarResponse = {
+  confirmed: ConfirmedIpo[];
+  confirmed_warning: string | null;
+  rumored: RumoredIpo[];
+};
+
 export type AccountSummary = {
   equity: number;
   last_equity: number;

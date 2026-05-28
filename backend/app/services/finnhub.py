@@ -88,6 +88,25 @@ async def company_news(symbol: str, days_back: int = 30) -> list[dict[str, Any]]
     return await cache.aget_or_set(f"finnhub-news:{symbol}:{days_back}", fetch, ttl_seconds=300)
 
 
+async def ipo_calendar(days_ahead: int = 30) -> list[dict[str, Any]]:
+    """Confirmed/expected IPOs from Finnhub's /calendar/ipo. Each row:
+    {date, exchange, name, numberOfShares, price, status, symbol, totalSharesValue}.
+    Free tier is rate-limited; we cache 1h since the calendar changes daily."""
+
+    async def fetch() -> list[dict[str, Any]]:
+        frm = datetime.utcnow().date()
+        to = frm + timedelta(days=days_ahead)
+        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            r = await client.get(
+                f"{BASE}/calendar/ipo",
+                params={"from": frm.isoformat(), "to": to.isoformat(), "token": _key()},
+            )
+            r.raise_for_status()
+            return (r.json() or {}).get("ipoCalendar") or []
+
+    return await cache.aget_or_set(f"finnhub-ipo:{days_ahead}", fetch, ttl_seconds=3600)
+
+
 async def earnings_calendar(days_ahead: int = 7) -> list[dict[str, Any]]:
     async def fetch() -> list[dict[str, Any]]:
         frm = datetime.utcnow().date()
