@@ -167,13 +167,23 @@ export type ConfirmedIpo = {
   status: string | null;
 };
 
+export type IpoFilingStatus =
+  | "filed"
+  | "confidential_filed"
+  | "rumored"
+  | "no_timeline";
+
 export type RumoredIpo = {
   name: string;
   sector: string;
+  filing_status: IpoFilingStatus;
+  ticker: string | null;
   est_valuation_usd: string;
   est_timing: string;
   why_it_matters: string;
   related_tickers: string[];
+  source_url: string | null;
+  last_verified: string; // YYYY-MM-DD
 };
 
 export type IpoCalendarResponse = {

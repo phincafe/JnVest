@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Rocket, Sparkles } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  Rocket,
+  Sparkles,
+} from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type {
   CalendarResponse,
@@ -7,9 +13,34 @@ import type {
   EarningsEvent,
   EconEvent,
   IpoCalendarResponse,
+  IpoFilingStatus,
   RumoredIpo,
 } from "../api/types";
 import { Skeleton } from "./Skeleton";
+
+const FILING_STATUS_LABEL: Record<IpoFilingStatus, string> = {
+  filed: "S-1 filed",
+  confidential_filed: "Confidential S-1",
+  rumored: "Rumored",
+  no_timeline: "No timeline",
+};
+
+const FILING_STATUS_CLASS: Record<IpoFilingStatus, string> = {
+  filed: "bg-(--color-up)/20 text-(--color-up)",
+  confidential_filed: "bg-yellow-500/20 text-yellow-200",
+  rumored: "bg-(--color-panel) text-(--color-text-dim)",
+  no_timeline: "bg-(--color-panel) text-(--color-text-dim)",
+};
+
+function staleDays(lastVerified: string): number | null {
+  try {
+    const then = new Date(lastVerified + "T00:00:00").getTime();
+    const now = Date.now();
+    return Math.floor((now - then) / 86_400_000);
+  } catch {
+    return null;
+  }
+}
 
 const REFRESH_MS = 5 * 60_000;
 
@@ -125,18 +156,43 @@ function IpoSection({ refreshNonce }: { refreshNonce: number }) {
 }
 
 function RumoredIpoCard({ data }: { data: IpoCalendarResponse | null }) {
+  // Find the most recent last_verified across the list — surfaces staleness.
+  const newest = useMemo(() => {
+    if (!data || data.rumored.length === 0) return null;
+    return [...data.rumored]
+      .map((r) => r.last_verified)
+      .sort()
+      .reverse()[0];
+  }, [data]);
+  const newestAge = newest ? staleDays(newest) : null;
+
   return (
     <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
-      <div className="mb-3 flex items-center gap-1.5">
-        <Sparkles size={12} className="text-(--color-accent)" />
-        <h3 className="text-xs uppercase tracking-wide text-(--color-text-dim)">
-          Rumored mega-IPOs to watch
-        </h3>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <Sparkles size={12} className="text-(--color-accent)" />
+          <h3 className="text-xs uppercase tracking-wide text-(--color-text-dim)">
+            Watched pre-IPO names
+          </h3>
+        </div>
+        {newest && (
+          <span
+            className={`text-[10px] tabular-nums ${
+              newestAge != null && newestAge > 30
+                ? "text-yellow-300"
+                : "text-(--color-text-dim)/70"
+            }`}
+            title="Most recent verification date across this list"
+          >
+            verified {newest}
+            {newestAge != null && newestAge > 30 ? ` · ${newestAge}d stale` : ""}
+          </span>
+        )}
       </div>
       {!data ? (
         <Skeleton className="h-40 w-full" />
       ) : data.rumored.length === 0 ? (
-        <p className="text-sm text-(--color-text-dim)">No rumored IPOs tracked.</p>
+        <p className="text-sm text-(--color-text-dim)">No pre-IPO names tracked.</p>
       ) : (
         <ul className="space-y-3">
           {data.rumored.map((ipo) => (
@@ -145,15 +201,20 @@ function RumoredIpoCard({ data }: { data: IpoCalendarResponse | null }) {
         </ul>
       )}
       <p className="mt-3 text-[10px] italic text-(--color-text-dim)/70">
-        Speculative / no S-1 filed unless noted. Related tickers historically
-        move on IPO-narrative shifts — no recommendation implied.
+        Hand-curated, not a live data feed. Each entry's `last_verified` date
+        shows when it was last checked against filings/news — confirm
+        independently before trading.
       </p>
     </div>
   );
 }
 
 function RumoredIpoRow({ ipo }: { ipo: RumoredIpo }) {
-  const [open, setOpen] = useState(ipo.name === "SpaceX");
+  // Open the most-actionable name (already-filed, top of sorted list) by
+  // default. SpaceX is currently at the top; this stays correct as the data
+  // shifts.
+  const [open, setOpen] = useState(ipo.filing_status === "filed");
+  const age = staleDays(ipo.last_verified);
   return (
     <li className="rounded-md border border-(--color-border)/60 bg-(--color-panel-2)/40 p-2.5">
       <button
@@ -163,13 +224,23 @@ function RumoredIpoRow({ ipo }: { ipo: RumoredIpo }) {
         aria-expanded={open}
       >
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {open ? (
               <ChevronDown size={12} className="shrink-0 text-(--color-text-dim)" />
             ) : (
               <ChevronRight size={12} className="shrink-0 text-(--color-text-dim)" />
             )}
             <span className="truncate text-sm font-medium">{ipo.name}</span>
+            {ipo.ticker && (
+              <span className="shrink-0 rounded bg-(--color-accent)/20 px-1.5 py-0.5 text-[10px] font-semibold text-(--color-accent)">
+                {ipo.ticker}
+              </span>
+            )}
+            <span
+              className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase ${FILING_STATUS_CLASS[ipo.filing_status]}`}
+            >
+              {FILING_STATUS_LABEL[ipo.filing_status]}
+            </span>
             <span className="shrink-0 rounded bg-(--color-panel) px-1.5 py-0.5 text-[10px] uppercase text-(--color-text-dim)">
               {ipo.sector}
             </span>
@@ -199,6 +270,26 @@ function RumoredIpoRow({ ipo }: { ipo: RumoredIpo }) {
               ))}
             </div>
           )}
+          <div className="flex items-center justify-between gap-2 pt-1 text-[10px] text-(--color-text-dim)/70">
+            <span
+              className={
+                age != null && age > 30 ? "text-yellow-300" : undefined
+              }
+            >
+              Last verified {ipo.last_verified}
+              {age != null && age > 30 ? ` (${age}d ago — may be stale)` : ""}
+            </span>
+            {ipo.source_url && (
+              <a
+                href={ipo.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 hover:text-(--color-accent)"
+              >
+                source <ExternalLink size={10} />
+              </a>
+            )}
+          </div>
         </div>
       )}
     </li>
