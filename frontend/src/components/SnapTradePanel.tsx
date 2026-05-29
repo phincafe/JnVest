@@ -54,9 +54,14 @@ function withAllocationPcts(h: SnapTradeHoldings): SnapTradeHoldings {
 export function SnapTradePanel({
   refreshNonce,
   isGuest = false,
+  afterOverview,
 }: {
   refreshNonce: number;
   isGuest?: boolean;
+  /** Slot rendered immediately after the Portfolio overview / Public
+   * portfolio view donuts and before the per-account chips. The Portfolio
+   * tab uses this to drop Recent activity right under the overview. */
+  afterOverview?: React.ReactNode;
 }) {
   const [needsCfg, setNeedsCfg] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -187,6 +192,7 @@ export function SnapTradePanel({
           isGuest
         />
         <GuestPortfolioView holdings={holdings} />
+        {afterOverview}
       </OptionSelectionContext.Provider>
     );
   }
@@ -298,6 +304,7 @@ export function SnapTradePanel({
                   holdings={withAllocationPcts(holdings)}
                 />
               )}
+              {afterOverview}
               {holdings && (
                 <AccountChips
                   accounts={holdings.accounts}
