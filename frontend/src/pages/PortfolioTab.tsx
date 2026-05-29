@@ -11,12 +11,17 @@ export default function PortfolioTab({
 }) {
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-4">
-      {/* Recent activity first — surfaces what's freshly added / closed
-          across all brokerage accounts before the user has to scroll past
-          the full positions tables. */}
-      <RecentActivity refreshNonce={refreshNonce} isGuest={isGuest} />
       <CustomOptionPanel isGuest={isGuest} />
-      <SnapTradePanel refreshNonce={refreshNonce} isGuest={isGuest} />
+      {/* Recent activity is rendered as a slot inside SnapTradePanel so it
+          appears directly under the Portfolio overview / Public portfolio
+          view donuts, before the per-account tables. */}
+      <SnapTradePanel
+        refreshNonce={refreshNonce}
+        isGuest={isGuest}
+        afterOverview={
+          <RecentActivity refreshNonce={refreshNonce} isGuest={isGuest} />
+        }
+      />
     </div>
   );
 }
