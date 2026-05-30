@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ChevronLeft, Search } from "lucide-react";
 import { AiWatch } from "../components/AiWatch";
 import { AlertsPanel } from "../components/AlertsPanel";
+import { QuantumWatch } from "../components/QuantumWatch";
 import { SpaceWatch } from "../components/SpaceWatch";
 import { WhWatch } from "../components/WhWatch";
 import { BuyWatch } from "../components/BuyWatch";
@@ -19,7 +20,15 @@ type Props = {
   isGuest?: boolean;
 };
 
-type ListKey = "holdings" | "buy" | "ai" | "wsb" | "wh" | "space" | "alerts";
+type ListKey =
+  | "holdings"
+  | "buy"
+  | "ai"
+  | "wsb"
+  | "wh"
+  | "space"
+  | "quantum"
+  | "alerts";
 type ListTab = { key: ListKey; label: string; ownerOnly?: boolean };
 const LIST_TABS: ListTab[] = [
   { key: "holdings", label: "Holdings" },
@@ -28,6 +37,7 @@ const LIST_TABS: ListTab[] = [
   { key: "wsb", label: "WSB" },
   { key: "wh", label: "WH Watch" },
   { key: "space", label: "Space" },
+  { key: "quantum", label: "Quantum" },
   { key: "alerts", label: "Alerts", ownerOnly: true },
 ];
 
@@ -96,6 +106,9 @@ export default function WatchlistTab({
           )}
           {activeList === "space" && (
             <SpaceWatch refreshNonce={refreshNonce} onSelect={setSelected} />
+          )}
+          {activeList === "quantum" && (
+            <QuantumWatch refreshNonce={refreshNonce} onSelect={setSelected} />
           )}
           {activeList === "alerts" && !isGuest && (
             <AlertsPanel refreshNonce={refreshNonce} />
