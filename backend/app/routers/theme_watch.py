@@ -84,6 +84,7 @@ THEMES: dict[str, list[tuple[str, str]]] = {
         ("QBTS", "Quantum"),
         ("IONQ", "Quantum"),
         ("RGTI", "Quantum"),
+        ("QUBT", "Quantum"),
         ("GH", "Healthcare"),
         ("GRAL", "Healthcare"),
         ("MIRM", "Healthcare"),
@@ -91,6 +92,31 @@ THEMES: dict[str, list[tuple[str, str]]] = {
         ("ANET", "Data centres"),
         ("TMQ", "Critical minerals"),
         ("UUUU", "Critical minerals"),
+    ],
+    # Quantum computing — high-beta hype basket. Pure-plays are the WSB /
+    # retail magnets that spike on any policy headline (e.g. National
+    # Quantum Initiative reauth, CHIPS-style funding mentions). Big-tech
+    # names give diversified exposure with less drawdown risk.
+    "quantum": [
+        # Small-cap pure-plays — most volatile, most hype-sensitive
+        ("IONQ", "Pure-plays"),
+        ("RGTI", "Pure-plays"),
+        ("QBTS", "Pure-plays"),  # D-Wave Quantum
+        ("QUBT", "Pure-plays"),  # Quantum Computing Inc
+        ("ARQQ", "Pure-plays"),  # Arqit Quantum
+        # Mega-cap programs — Willow (GOOGL), Majorana 1 (MSFT), Heron (IBM)
+        ("IBM", "Big tech"),
+        ("GOOGL", "Big tech"),
+        ("MSFT", "Big tech"),
+        ("AMZN", "Big tech"),  # AWS Braket
+        ("INTC", "Big tech"),
+        ("HON", "Big tech"),  # Quantinuum stake
+        # Picks-and-shovels / adjacent
+        ("NVDA", "Picks & shovels"),  # CUDA-Q hybrid stack
+        ("LMT", "Picks & shovels"),  # Defense quantum apps
+        ("BAH", "Picks & shovels"),  # Quantum consulting for federal
+        # International — extra geopolitical risk premium
+        ("BABA", "International"),  # Alibaba Quantum Lab
     ],
 }
 
