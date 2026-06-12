@@ -217,7 +217,10 @@ function GroupSection({
                             : ""
                     }`}
                   >
-                    {t.rsi14 == null ? "—" : t.rsi14.toFixed(1)}
+                    {/* OS/OB text marker so the signal reads without color. */}
+                    {t.rsi14 == null
+                      ? "—"
+                      : `${t.rsi14.toFixed(1)}${t.rsi14 < 30 ? " OS" : t.rsi14 > 70 ? " OB" : ""}`}
                   </td>
                   <td
                     className={`px-3 py-1.5 text-right ${

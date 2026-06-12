@@ -48,10 +48,18 @@ function relVolBadge(r: number | null): string {
 
 function rsiBadge(r: number | null): { text: string; cls: string } {
   if (r == null) return { text: "—", cls: "text-(--color-text-dim)" };
+  // Text suffix alongside the color so overbought/oversold reads without
+  // relying on red/green alone (colorblind accessibility).
   let cls = "text-(--color-text-dim)";
-  if (r >= 70) cls = "text-(--color-down)";
-  else if (r <= 30) cls = "text-(--color-up)";
-  return { text: r.toFixed(0), cls };
+  let suffix = "";
+  if (r >= 70) {
+    cls = "text-(--color-down)";
+    suffix = " OB";
+  } else if (r <= 30) {
+    cls = "text-(--color-up)";
+    suffix = " OS";
+  }
+  return { text: r.toFixed(0) + suffix, cls };
 }
 
 function earningsBadge(days: number | null): ReactNode {
@@ -410,7 +418,7 @@ export function Watchlist({ refreshNonce, selected, onSelect, isGuest = false }:
                               onRemove(r.symbol);
                             }}
                             disabled={busy}
-                            className="text-(--color-text-dim) hover:text-(--color-down)"
+                            className="-m-2.5 rounded p-2.5 text-(--color-text-dim) hover:text-(--color-down)"
                             aria-label={`Remove ${r.symbol}`}
                           >
                             <Trash2 size={14} />
