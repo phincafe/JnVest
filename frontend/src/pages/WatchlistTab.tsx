@@ -2,9 +2,7 @@ import { useEffect, useState } from "react";
 import { ChevronLeft, Search } from "lucide-react";
 import { AiWatch } from "../components/AiWatch";
 import { AlertsPanel } from "../components/AlertsPanel";
-import { QuantumWatch } from "../components/QuantumWatch";
-import { SpaceWatch } from "../components/SpaceWatch";
-import { WhWatch } from "../components/WhWatch";
+import { ThemesPanel } from "../components/ThemesPanel";
 import { BuyWatch } from "../components/BuyWatch";
 import { StockDetail } from "../components/StockDetail";
 import { Watchlist } from "../components/Watchlist";
@@ -20,26 +18,20 @@ type Props = {
   isGuest?: boolean;
 };
 
-type ListKey =
-  | "holdings"
-  | "buy"
-  | "ai"
-  | "wsb"
-  | "wh"
-  | "space"
-  | "quantum"
-  | "alerts";
+type ListKey = "holdings" | "buy" | "ai" | "wsb" | "themes" | "alerts";
 type ListTab = { key: ListKey; label: string; ownerOnly?: boolean };
 const LIST_TABS: ListTab[] = [
   { key: "holdings", label: "Holdings" },
   { key: "buy", label: "Buy Watch" },
   { key: "ai", label: "AI Watch" },
   { key: "wsb", label: "WSB" },
-  { key: "wh", label: "WH Watch" },
-  { key: "space", label: "Space" },
-  { key: "quantum", label: "Quantum" },
+  { key: "themes", label: "Themes" },
   { key: "alerts", label: "Alerts", ownerOnly: true },
 ];
+
+// Pre-consolidation saved keys ("wh" / "space" / "quantum") map onto the
+// Themes tab, carrying the specific theme into ThemesPanel's own storage.
+const LEGACY_THEME_KEYS = new Set(["wh", "space", "quantum"]);
 
 export default function WatchlistTab({
   refreshNonce,
@@ -53,9 +45,13 @@ export default function WatchlistTab({
   // through all four stacked. Persisted so revisiting the tab doesn't
   // bounce back to Holdings.
   const [activeList, setActiveList] = useState<ListKey>(() => {
-    const saved = sessionStorage.getItem("jnv:watchlist-tab") as ListKey | null;
+    const saved = sessionStorage.getItem("jnv:watchlist-tab");
+    if (saved && LEGACY_THEME_KEYS.has(saved)) {
+      sessionStorage.setItem("jnv:theme", saved);
+      return "themes";
+    }
     const valid = LIST_TABS.some((t) => t.key === saved && (!t.ownerOnly || !isGuest));
-    return valid && saved ? saved : "holdings";
+    return valid ? (saved as ListKey) : "holdings";
   });
   useEffect(() => {
     sessionStorage.setItem("jnv:watchlist-tab", activeList);
@@ -109,14 +105,8 @@ export default function WatchlistTab({
           {activeList === "ai" && (
             <AiWatch refreshNonce={refreshNonce} onSelect={setSelected} />
           )}
-          {activeList === "wh" && (
-            <WhWatch refreshNonce={refreshNonce} onSelect={setSelected} />
-          )}
-          {activeList === "space" && (
-            <SpaceWatch refreshNonce={refreshNonce} onSelect={setSelected} />
-          )}
-          {activeList === "quantum" && (
-            <QuantumWatch refreshNonce={refreshNonce} onSelect={setSelected} />
+          {activeList === "themes" && (
+            <ThemesPanel refreshNonce={refreshNonce} onSelect={setSelected} />
           )}
           {activeList === "alerts" && !isGuest && (
             <AlertsPanel refreshNonce={refreshNonce} />
