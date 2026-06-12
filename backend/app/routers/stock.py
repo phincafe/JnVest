@@ -108,7 +108,9 @@ async def stock_bars(
 
 
 @router.get("/{symbol}/news")
-async def stock_news(symbol: str, limit: int = 10, days_back: int = 30) -> dict[str, Any]:
+async def stock_news(
+    symbol: str, limit: int = Query(10, ge=1, le=50), days_back: int = Query(30, ge=1, le=90)
+) -> dict[str, Any]:
     try:
         items = await finnhub.company_news(symbol.upper(), days_back=days_back)
     except RuntimeError as e:

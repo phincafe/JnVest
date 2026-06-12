@@ -17,7 +17,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
@@ -105,7 +105,7 @@ def stop(request: Request, db: Session = Depends(get_db)) -> dict[str, Any]:
 
 @router.get("/signals")
 def signals(
-    request: Request, limit: int = 50, db: Session = Depends(get_db)
+    request: Request, limit: int = Query(50, ge=1, le=500), db: Session = Depends(get_db)
 ) -> list[dict[str, Any]]:
     _require_owner(request)
     rows = db.execute(select(BotSignal).order_by(desc(BotSignal.id)).limit(limit)).scalars().all()
@@ -246,7 +246,7 @@ async def backtest_shock(
 
 @router.get("/trades")
 def trades(
-    request: Request, limit: int = 50, db: Session = Depends(get_db)
+    request: Request, limit: int = Query(50, ge=1, le=500), db: Session = Depends(get_db)
 ) -> list[dict[str, Any]]:
     _require_owner(request)
     rows = db.execute(select(BotTrade).order_by(desc(BotTrade.id)).limit(limit)).scalars().all()
