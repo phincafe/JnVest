@@ -3,7 +3,7 @@ import io
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -107,7 +107,7 @@ async def alpaca_positions(request: Request) -> dict[str, Any]:
 
 
 @router.get("/orders")
-async def alpaca_orders(request: Request, limit: int = 20) -> dict[str, Any]:
+async def alpaca_orders(request: Request, limit: int = Query(20, ge=1, le=100)) -> dict[str, Any]:
     _require_owner(request)
     try:
         rows = await alpaca.get_orders(limit=limit)

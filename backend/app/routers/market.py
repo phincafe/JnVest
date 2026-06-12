@@ -1,7 +1,7 @@
 import asyncio
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from ..services import alpaca, apewisdom, finnhub
 from ..services.errors import provider_error
@@ -218,7 +218,7 @@ async def ai_watch() -> dict[str, Any]:
 
 
 @router.get("/wsb")
-async def wsb(limit: int = 10) -> dict[str, Any]:
+async def wsb(limit: int = Query(10, ge=1, le=50)) -> dict[str, Any]:
     """Top WallStreetBets tickers by mention count, with 24h delta + rank
     change + sentiment. Public — no auth needed (Reddit data, scraped via
     ApeWisdom). Cached server-side 15 min."""
@@ -285,7 +285,7 @@ _MOVERS_UNIVERSE = [
 
 
 @router.get("/movers")
-async def movers(limit: int = 5) -> dict[str, Any]:
+async def movers(limit: int = Query(5, ge=1, le=25)) -> dict[str, Any]:
     """Top gainers + losers across a curated universe of liquid mega-caps and
     popular options names — Finviz-style 'top of the morning' panel."""
     try:
@@ -322,7 +322,7 @@ async def movers(limit: int = 5) -> dict[str, Any]:
 
 
 @router.get("/search")
-async def search(q: str, limit: int = 10) -> dict[str, Any]:
+async def search(q: str, limit: int = Query(10, ge=1, le=25)) -> dict[str, Any]:
     """Symbol search for the cmd+K palette autocomplete. Public (no auth)
     so guests can look up tickers that aren't in the owner's watchlist."""
     q = (q or "").strip()
@@ -338,7 +338,7 @@ async def search(q: str, limit: int = 10) -> dict[str, Any]:
 
 
 @router.get("/news")
-async def market_news(limit: int = 20) -> dict[str, Any]:
+async def market_news(limit: int = Query(20, ge=1, le=50)) -> dict[str, Any]:
     """General market news headlines from Finnhub."""
     try:
         items = await finnhub.market_news("general", limit=limit)

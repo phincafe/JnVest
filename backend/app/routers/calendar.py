@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -226,7 +226,7 @@ WATCHED_RUMORED_IPOS = WATCHED_UPCOMING_IPOS
 
 
 @router.get("/ipos")
-async def ipos(days_ahead: int = 30) -> dict[str, Any]:
+async def ipos(days_ahead: int = Query(30, ge=1, le=90)) -> dict[str, Any]:
     """Upcoming IPO calendar — confirmed (from Finnhub) + curated watched
     mega-IPOs (hardcoded server-side, edited via WATCHED_UPCOMING_IPOS).
 
