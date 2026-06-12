@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import BrokerageAccountAlias, WatchlistTicker
+from ..models import BrokerageAccountAlias, EquitySnapshot, WatchlistTicker
 from ..services import alpaca, finnhub, snaptrade_svc, streamer
 from ..services.errors import provider_error
 
@@ -49,6 +49,49 @@ async def _attach_earnings_flags(flat: dict[str, Any]) -> None:
         row["earnings_days"] = days_until(er_by_sym.get((row.get("ticker") or "").upper()))
     for row in flat["options"]:
         row["earnings_days"] = days_until(er_by_sym.get((row.get("underlying") or "").upper()))
+
+
+def _upsert_equity_snapshot(db: Session, flat: dict[str, Any]) -> None:
+    """Record today's total account value for the equity curve. Runs on every
+    holdings fetch — latest value of the day wins. Best-effort: a DB hiccup
+    must never fail the holdings response."""
+    totals = flat.get("totals") or {}
+    equity = totals.get("equity")
+    if equity is None:
+        return
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    try:
+        row = db.query(EquitySnapshot).filter(EquitySnapshot.as_of_date == today).first()
+        if row is None:
+            row = EquitySnapshot(as_of_date=today, equity=0.0, invested=0.0, cash=0.0)
+            db.add(row)
+        row.equity = float(equity)
+        row.invested = float(totals.get("invested") or 0)
+        row.cash = float(totals.get("cash") or 0)
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
+@router.get("/equity-history")
+def equity_history(request: Request, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Daily equity snapshots for the Portfolio curve. Owner-only ($ amounts)."""
+    from ..main import is_guest
+
+    if is_guest(request):
+        raise HTTPException(status_code=401, detail="owner login required")
+    rows = db.query(EquitySnapshot).order_by(EquitySnapshot.as_of_date).all()
+    return {
+        "points": [
+            {
+                "date": r.as_of_date,
+                "equity": r.equity,
+                "invested": r.invested,
+                "cash": r.cash,
+            }
+            for r in rows
+        ]
+    }
 
 
 @router.get("/login-link")
@@ -639,6 +682,7 @@ async def get_holdings(request: Request, db: Session = Depends(get_db)) -> dict[
     )
     flat = _flatten(raw, prev_closes=prev_closes, option_quotes=option_quotes)
     await _attach_earnings_flags(flat)
+    _upsert_equity_snapshot(db, flat)
     # Apply user-chosen account nicknames.
     aliases = {a.account_id: a.nickname for a in db.query(BrokerageAccountAlias).all()}
     for acct in flat["accounts"]:
