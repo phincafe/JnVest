@@ -643,7 +643,13 @@ export type PriceAlert = {
   dismissed_at: string | null;
 };
 
-export type PriceAlertsResponse = { alerts: PriceAlert[] };
+export type PriceAlertsResponse = {
+  alerts: PriceAlert[];
+  /** ISO time the backend evaluator last completed a tick — null until the
+   * first tick after boot. Stale (>5 min) means evaluation is paused
+   * (e.g. Render free-tier sleep). */
+  last_evaluated_at: string | null;
+};
 
 export type PriceAlertInput = {
   symbol: string;

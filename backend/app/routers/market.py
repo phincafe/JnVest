@@ -8,6 +8,25 @@ from ..services.errors import provider_error
 
 router = APIRouter(prefix="/market", tags=["market"])
 
+
+@router.get("/clock")
+async def market_clock() -> dict[str, Any]:
+    """Exchange clock for the header status badge. Alpaca handles weekends
+    and holidays; the frontend derives PRE/AFTER from ET wall time."""
+    try:
+        c = await alpaca.get_clock()
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=provider_error("Alpaca", e)) from e
+    return {
+        "is_open": bool(c.get("is_open")),
+        "next_open": c.get("next_open"),
+        "next_close": c.get("next_close"),
+        "timestamp": c.get("timestamp"),
+    }
+
+
 INDEX_SYMBOLS = ["SPY", "QQQ", "DIA", "IWM"]
 MACRO_SYMBOLS = ["VIXY", "UUP"]  # IEX-tradable proxies; native ^VIX/^TNX/DXY are off-feed
 SECTOR_SYMBOLS = [

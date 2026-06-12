@@ -50,8 +50,16 @@ export default function WatchlistTab({
   const [selected, setSelected] = useState<string | null>(null);
   // Active list in the left column. Tabs at the top let the user jump
   // between Holdings / Buy Watch / AI Watch / WSB without scrolling
-  // through all four stacked.
-  const [activeList, setActiveList] = useState<ListKey>("holdings");
+  // through all four stacked. Persisted so revisiting the tab doesn't
+  // bounce back to Holdings.
+  const [activeList, setActiveList] = useState<ListKey>(() => {
+    const saved = sessionStorage.getItem("jnv:watchlist-tab") as ListKey | null;
+    const valid = LIST_TABS.some((t) => t.key === saved && (!t.ownerOnly || !isGuest));
+    return valid && saved ? saved : "holdings";
+  });
+  useEffect(() => {
+    sessionStorage.setItem("jnv:watchlist-tab", activeList);
+  }, [activeList]);
 
   useEffect(() => {
     if (requestedSymbol) {

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import PriceAlert
+from ..services import alerts_runner
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
@@ -62,7 +63,18 @@ def list_alerts(request: Request, db: Session = Depends(get_db)) -> dict[str, An
     # Active alerts (not yet triggered) + recently-triggered/dismissed for
     # history. Newest-first.
     rows = db.execute(select(PriceAlert).order_by(desc(PriceAlert.id)).limit(100)).scalars().all()
-    return {"alerts": [_row_to_dict(r) for r in rows]}
+    le = alerts_runner.last_evaluated_at
+    le_iso = (
+        (le.isoformat() + "Z")
+        if le and "+" not in le.isoformat()
+        else (le.isoformat() if le else None)
+    )
+    return {
+        "alerts": [_row_to_dict(r) for r in rows],
+        # When the evaluator last completed a tick. Stalls (Render free-tier
+        # sleep) show up as this going stale — the UI warns past ~5 min.
+        "last_evaluated_at": le_iso,
+    }
 
 
 @router.post("")

@@ -42,6 +42,8 @@ async function refresh<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
 
 export type CacheState<T> = {
   data: T | null;
+  /** Epoch ms of the last successful fetch — drives "updated Xs ago" UI. */
+  fetchedAt: number | null;
   isStale: boolean;
   isFetching: boolean;
   error: string | null;
@@ -78,20 +80,35 @@ export function useCachedFetch<T>(
         .finally(() => setIsFetching(false));
     }
 
+    const doRefresh = () => {
+      setIsFetching(true);
+      refresh(key, fetcherRef.current)
+        .then(() => setError(null))
+        .catch((e) => setError((e as Error).message))
+        .finally(() => setIsFetching(false));
+    };
+
     let intervalId: number | undefined;
     if (refreshMs) {
       intervalId = window.setInterval(() => {
-        setIsFetching(true);
-        refresh(key, fetcherRef.current)
-          .then(() => setError(null))
-          .catch((e) => setError((e as Error).message))
-          .finally(() => setIsFetching(false));
+        // Don't burn API quota / battery while the tab is backgrounded —
+        // the visibility listener below catches up on return.
+        if (document.hidden) return;
+        doRefresh();
       }, refreshMs);
     }
+
+    const onVisible = () => {
+      if (document.hidden) return;
+      const entry = cache.get(key);
+      if (!entry || Date.now() - entry.fetchedAt > staleAfterMs) doRefresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
 
     return () => {
       unsub();
       if (intervalId) window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [key, refreshMs, staleAfterMs]);
 
@@ -108,6 +125,7 @@ export function useCachedFetch<T>(
 
   return {
     data: cached?.data ?? null,
+    fetchedAt: cached?.fetchedAt ?? null,
     isStale: cached ? Date.now() - cached.fetchedAt > staleAfterMs : false,
     isFetching,
     error,
