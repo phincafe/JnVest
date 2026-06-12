@@ -1,5 +1,6 @@
 import { CustomOptionPanel } from "../components/CustomOptionPanel";
 import { EquityCurve } from "../components/EquityCurve";
+import { ExpirationRadar } from "../components/ExpirationRadar";
 import { RecentActivity } from "../components/RecentActivity";
 import { SnapTradePanel } from "../components/SnapTradePanel";
 
@@ -21,6 +22,9 @@ export default function PortfolioTab({
         isGuest={isGuest}
         afterOverview={
           <>
+            {/* Expiring contracts first — the most time-sensitive info on
+                the page. Renders nothing when no options are held. */}
+            <ExpirationRadar refreshNonce={refreshNonce} isGuest={isGuest} />
             <RecentActivity refreshNonce={refreshNonce} isGuest={isGuest} />
             {/* Equity history is $ amounts — owner only. */}
             {!isGuest && <EquityCurve refreshNonce={refreshNonce} />}
