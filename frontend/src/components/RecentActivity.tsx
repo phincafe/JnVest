@@ -5,6 +5,7 @@ import type { SnapTradeHoldings, SnapTradeOrder } from "../api/types";
 import { useCachedFetch } from "../hooks/useCachedFetch";
 import { changeClass, fmtPrice } from "../lib/format";
 import { Skeleton } from "./Skeleton";
+import { UpdatedAgo } from "./UpdatedAgo";
 
 const REFRESH_MS = 5 * 60_000;
 
@@ -59,7 +60,7 @@ export function RecentActivity({
   refreshNonce: number;
   isGuest: boolean;
 }) {
-  const { data } = useCachedFetch<SnapTradeHoldings>(
+  const { data, fetchedAt } = useCachedFetch<SnapTradeHoldings>(
     "snaptrade:holdings",
     () => api.get("/snaptrade/holdings"),
     { refreshMs: REFRESH_MS, staleAfterMs: 60_000 },
@@ -107,8 +108,9 @@ export function RecentActivity({
 
   return (
     <section className="space-y-2">
-      <h2 className="text-sm font-medium text-(--color-text-dim)">
+      <h2 className="flex items-baseline gap-2 text-sm font-medium text-(--color-text-dim)">
         Recent activity
+        <UpdatedAgo fetchedAt={fetchedAt} />
       </h2>
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <ActivityList

@@ -25,6 +25,11 @@ log = logging.getLogger("alerts.runner")
 
 TICK_INTERVAL_SEC = 60
 
+# Timestamp of the most recent completed tick. Surfaced via /api/alerts so
+# the UI can warn when evaluation has stalled — on Render's free tier the
+# instance sleeps after 15 min idle and alerts silently stop evaluating.
+last_evaluated_at: datetime | None = None
+
 
 def _crossed(direction: str, threshold: float, last_price: float) -> bool:
     if direction == "above":
@@ -36,6 +41,7 @@ def _crossed(direction: str, threshold: float, last_price: float) -> bool:
 
 async def _tick() -> None:
     """Single tick — query active alerts, fetch quotes, mark triggers."""
+    global last_evaluated_at
     try:
         db = SessionLocal()
         try:
@@ -46,6 +52,7 @@ async def _tick() -> None:
             )
         finally:
             db.close()
+        last_evaluated_at = datetime.utcnow()
         if not active:
             return
         symbols = sorted({a.symbol.upper() for a in active})

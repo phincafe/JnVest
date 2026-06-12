@@ -13,6 +13,7 @@ import { useCachedFetch, clearCacheKey, mutateCache } from "../hooks/useCachedFe
 import { changeClass, fmtPct, fmtPrice } from "../lib/format";
 import { GuestPortfolioView } from "./GuestPortfolioView";
 import { OptionPnLModal } from "./OptionPnLModal";
+import { UpdatedAgo } from "./UpdatedAgo";
 import { Skeleton } from "./Skeleton";
 
 // Lets any owned-options table open the P/L modal without threading a callback
@@ -66,7 +67,14 @@ export function SnapTradePanel({
   const [needsCfg, setNeedsCfg] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [selectedAccountId, setSelectedAccountId] = useState<string>("all");
+  // Persisted so switching app tabs doesn't reset the account drilldown.
+  const [selectedAccountId, setSelectedAccountIdRaw] = useState<string>(
+    () => sessionStorage.getItem("jnv:snaptrade-account") ?? "all",
+  );
+  const setSelectedAccountId = (id: string) => {
+    sessionStorage.setItem("jnv:snaptrade-account", id);
+    setSelectedAccountIdRaw(id);
+  };
   const [selectedOption, setSelectedOption] = useState<SnapTradeOption | null>(
     null,
   );
@@ -205,8 +213,9 @@ export function SnapTradePanel({
         onClose={() => setSelectedOption(null)}
       />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-medium text-(--color-text-dim)">
+        <h2 className="flex items-baseline gap-2 text-sm font-medium text-(--color-text-dim)">
           Brokerages
+          <UpdatedAgo fetchedAt={holdingsCache.fetchedAt} />
         </h2>
         <div className="flex flex-wrap items-center gap-1.5">
           <button

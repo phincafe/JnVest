@@ -321,6 +321,22 @@ async def option_snapshots(occ_symbols: list[str]) -> dict[str, dict[str, Any]]:
     return await cache.aget_or_set(key, fetch, ttl_seconds=30)
 
 
+async def get_clock() -> dict[str, Any]:
+    """Market clock: {is_open, next_open, next_close, timestamp}. Handles
+    weekends + exchange holidays (unlike client-side time math). Cached 60s."""
+    if not _has_creds():
+        raise RuntimeError("Alpaca credentials not configured")
+
+    async def fetch() -> dict[str, Any]:
+        s = get_settings()
+        async with httpx.AsyncClient(timeout=DATA_TIMEOUT) as client:
+            r = await client.get(f"{s.alpaca_base_url}/v2/clock", headers=_trading_headers())
+            r.raise_for_status()
+            return r.json()
+
+    return await cache.aget_or_set("alpaca-clock", fetch, ttl_seconds=60)
+
+
 async def get_account() -> dict[str, Any]:
     if not _has_creds():
         raise RuntimeError("Alpaca credentials not configured")

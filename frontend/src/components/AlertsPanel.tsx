@@ -25,6 +25,7 @@ type Props = {
 
 export function AlertsPanel({ refreshNonce }: Props) {
   const [alerts, setAlerts] = useState<PriceAlert[]>([]);
+  const [lastEvaluated, setLastEvaluated] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -36,6 +37,7 @@ export function AlertsPanel({ refreshNonce }: Props) {
     try {
       const r = await api.get<PriceAlertsResponse>("/alerts");
       setAlerts(r.alerts);
+      setLastEvaluated(r.last_evaluated_at ?? null);
       setErr(null);
       // Fire browser Notification for any newly-triggered, undismissed
       // alert we haven't already notified for.
@@ -129,6 +131,7 @@ export function AlertsPanel({ refreshNonce }: Props) {
               {active.length} active · {triggered.length} pending
             </span>
           </h3>
+          <EvaluatorStatus lastEvaluated={lastEvaluated} />
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -348,5 +351,41 @@ function AddAlertForm({
         </button>
       </div>
     </form>
+  );
+}
+
+/** Shows when the backend evaluator last completed a tick. On Render's free
+ * tier the instance sleeps after ~15 min idle and alerts silently stop
+ * evaluating — this makes that visible (yellow warning past 5 minutes). */
+function EvaluatorStatus({ lastEvaluated }: { lastEvaluated: string | null }) {
+  if (!lastEvaluated) {
+    return (
+      <span
+        className="rounded bg-(--color-panel-2) px-1.5 py-0.5 text-[10px] text-(--color-text-dim)"
+        title="The evaluator hasn't completed a tick since the server started."
+      >
+        evaluator starting…
+      </span>
+    );
+  }
+  const ageMin = Math.floor((Date.now() - new Date(lastEvaluated).getTime()) / 60_000);
+  const stalled = ageMin >= 5;
+  return (
+    <span
+      className={`rounded px-1.5 py-0.5 text-[10px] ${
+        stalled
+          ? "bg-yellow-500/20 text-yellow-200"
+          : "bg-(--color-panel-2) text-(--color-text-dim)"
+      }`}
+      title={
+        stalled
+          ? "Evaluation may be paused — Render free tier sleeps after 15 min idle. A ping service (e.g. UptimeRobot on /api/health) keeps it awake."
+          : "Background evaluator is running (checks every 60s during the session)."
+      }
+    >
+      {stalled
+        ? `⚠ checked ${ageMin}m ago`
+        : `checked ${ageMin < 1 ? "<1" : ageMin}m ago`}
+    </span>
   );
 }

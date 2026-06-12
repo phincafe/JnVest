@@ -3,6 +3,7 @@ import { LogOut, RefreshCcw, Search } from "lucide-react";
 import { api } from "../api/client";
 import type { SnapTradeHoldings } from "../api/types";
 import { changeClass, fmtPrice } from "../lib/format";
+import { MarketStatusBadge } from "./MarketStatusBadge";
 
 type Props = {
   refreshNonce: number;
@@ -63,6 +64,7 @@ export function Header({
               Guest
             </span>
           )}
+          <MarketStatusBadge />
         </div>
 
         {isGuest ? null : (
