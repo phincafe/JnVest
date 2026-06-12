@@ -29,6 +29,11 @@ TICK_INTERVAL_SEC = 60
 # Need this many 5m bars before the detector can produce anything useful
 # (RSI burns the first 14 + we need lookback room for swings).
 MIN_BARS = 50
+# Hard ceiling on entries per UTC day. The daily loss cap only trips after
+# losses accumulate; on a whipsaw day the detector can keep firing fresh
+# signals between stop-outs, re-entering until the loss cap finally bites.
+# This caps the bleed regardless of P/L.
+MAX_TRADES_PER_DAY = 3
 # When the latest signal index is the same as last tick's, skip placing
 # another order — keeps a stale signal from re-firing every minute.
 _last_signal_key: tuple[str, int] | None = None
@@ -238,6 +243,18 @@ async def _tick() -> None:
                 db.close()
             return
 
+        # 5b. Per-day entry ceiling, independent of P/L.
+        if _trades_opened_today() >= MAX_TRADES_PER_DAY:
+            db = SessionLocal()
+            try:
+                sig = db.get(BotSignal, signal_id)
+                if sig is not None:
+                    sig.skip_reason = "max_trades_per_day"
+                    db.commit()
+            finally:
+                db.close()
+            return
+
         # 6. Open a new trade.
         trade = await _try_open_trade(spot, signal.side, signal_id)
         if trade is None:
@@ -260,6 +277,17 @@ async def _has_open_trade() -> bool:
             select(BotTrade).where(BotTrade.exit_at.is_(None)).order_by(desc(BotTrade.id)).limit(1)
         )
         return row is not None
+    finally:
+        db.close()
+
+
+def _trades_opened_today() -> int:
+    """Entries with entry_at on the current UTC date — drives MAX_TRADES_PER_DAY."""
+    db = SessionLocal()
+    try:
+        midnight = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        rows = db.execute(select(BotTrade).where(BotTrade.entry_at >= midnight)).scalars().all()
+        return len(rows)
     finally:
         db.close()
 
