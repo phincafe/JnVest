@@ -8,6 +8,7 @@ from ..db import get_db
 from ..models import IVHistory
 from ..services import alpaca, yahoo
 from ..services.blackscholes import greeks
+from ..services.errors import provider_error
 from ..services.indicators import iv_percentile, iv_rank
 
 router = APIRouter(prefix="/options", tags=["options"])
@@ -51,7 +52,7 @@ async def list_expirations(symbol: str) -> dict[str, Any]:
     try:
         exps = await yahoo.expirations(sym)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Yahoo error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("Yahoo", e)) from e
     return {"symbol": sym, "expirations": exps}
 
 
@@ -62,7 +63,7 @@ async def iv_summary(symbol: str, db: Session = Depends(get_db)) -> dict[str, An
         spot = await _spot_price(sym)
         exps = await yahoo.expirations(sym)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Data fetch error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("Market data", e)) from e
 
     if not exps:
         return {
@@ -188,7 +189,7 @@ async def chain(
         spot = await _spot_price(sym)
         chain_data = await yahoo.option_chain(sym, expiration)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Data fetch error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("Market data", e)) from e
 
     try:
         exp_dt = datetime.strptime(expiration, "%Y-%m-%d")

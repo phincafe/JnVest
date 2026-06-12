@@ -4,6 +4,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 
 from ..services import alpaca, finnhub, yahoo  # noqa: F401
+from ..services.errors import provider_error
 from ..services.indicators import sma
 
 router = APIRouter(prefix="/stock", tags=["stock"])
@@ -75,7 +76,7 @@ async def stock_bars(
     try:
         bars = await alpaca.bars(symbol.upper(), timeframe=timeframe, start=start, limit=10000)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("Alpaca", e)) from e
 
     closes = [b["c"] for b in bars]
     sma20 = sma(closes, 20)
@@ -114,7 +115,7 @@ async def stock_news(symbol: str, limit: int = 10, days_back: int = 30) -> dict[
         # FINNHUB_API_KEY missing — surface nicely instead of 500.
         return {"items": [], "warning": str(e), "days_back": days_back}
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Finnhub error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("Finnhub", e)) from e
 
     trimmed = []
     for it in items[:limit]:
@@ -139,7 +140,7 @@ async def stock_insider(symbol: str) -> dict[str, Any]:
     except RuntimeError as e:
         return {"items": [], "summary": None, "warning": str(e)}
     except Exception as e:
-        return {"items": [], "summary": None, "warning": f"Finnhub error: {e}"}
+        return {"items": [], "summary": None, "warning": provider_error("Finnhub", e)}
 
     items = []
     buy_shares = sell_shares = 0.0

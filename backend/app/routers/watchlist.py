@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..models import WatchlistTicker
 from ..services import alpaca, streamer, yahoo
+from ..services.errors import provider_error
 from ..services.indicators import rsi, sma
 
 router = APIRouter(prefix="/watchlist", tags=["watchlist"])
@@ -102,7 +103,7 @@ async def watchlist_quotes(db: Session = Depends(get_db)) -> dict[str, Any]:
         bars_all = await alpaca.daily_bars(symbols, days=260)
         trades = await alpaca.latest_trades(symbols)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("Alpaca", e)) from e
 
     out: list[dict[str, Any]] = []
     for sym in symbols:

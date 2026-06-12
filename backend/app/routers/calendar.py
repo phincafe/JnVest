@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..models import WatchlistTicker
 from ..services import finnhub
+from ..services.errors import provider_error
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
@@ -39,7 +40,7 @@ async def today(db: Session = Depends(get_db)) -> dict[str, Any]:
         econ_warning = str(e)
     except Exception as e:
         econ_raw = []
-        econ_warning = f"Finnhub error: {e}"
+        econ_warning = provider_error("Finnhub", e)
 
     # US-only, next 7 days, prefer high+medium impact (low impact floods the list).
     econ = []
@@ -75,7 +76,7 @@ async def today(db: Session = Depends(get_db)) -> dict[str, Any]:
         earnings_warning = str(e)
     except Exception as e:
         earn_raw = []
-        earnings_warning = f"Finnhub error: {e}"
+        earnings_warning = provider_error("Finnhub", e)
 
     earnings = []
     for e in earn_raw:
@@ -239,7 +240,7 @@ async def ipos(days_ahead: int = 30) -> dict[str, Any]:
         confirmed_warning = str(e)
     except Exception as e:
         confirmed_raw = []
-        confirmed_warning = f"Finnhub error: {e}"
+        confirmed_warning = provider_error("Finnhub", e)
 
     confirmed: list[dict[str, Any]] = []
     for row in confirmed_raw:
