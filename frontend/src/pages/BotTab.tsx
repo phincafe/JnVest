@@ -264,10 +264,80 @@ function Stat({
   );
 }
 
+function tradesToCsv(trades: BotTradeRow[]): string {
+  const header = [
+    "id",
+    "occ_symbol",
+    "side",
+    "qty",
+    "entry_at",
+    "entry_price",
+    "tp_price",
+    "sl_price",
+    "exit_at",
+    "exit_price",
+    "exit_reason",
+    "realized_pnl",
+  ];
+  const lines = trades.map((t) =>
+    [
+      t.id,
+      t.occ_symbol,
+      t.side,
+      t.qty,
+      t.entry_at,
+      t.entry_price,
+      t.tp_price,
+      t.sl_price,
+      t.exit_at ?? "",
+      t.exit_price ?? "",
+      t.exit_reason ?? "",
+      t.realized_pnl ?? "",
+    ].join(","),
+  );
+  return [header.join(","), ...lines].join("\n");
+}
+
+function downloadTradesCsv(trades: BotTradeRow[]) {
+  const blob = new Blob([tradesToCsv(trades)], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `jnvest-bot-trades-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function TradesPanel({ trades }: { trades: BotTradeRow[] }) {
+  const closed = trades.filter((t) => t.realized_pnl != null);
+  const wins = closed.filter((t) => (t.realized_pnl ?? 0) > 0).length;
+  const totalPnl = closed.reduce((s, t) => s + (t.realized_pnl ?? 0), 0);
   return (
     <div className="rounded-xl border border-(--color-border) bg-(--color-panel) p-4">
-      <h3 className="mb-3 text-sm font-medium">Trades ({trades.length})</h3>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-medium">
+          Trades ({trades.length})
+          {closed.length > 0 && (
+            <span className="ml-2 text-xs font-normal tabular-nums text-(--color-text-dim)">
+              {closed.length} closed · {wins}W/{closed.length - wins}L (
+              {((wins / closed.length) * 100).toFixed(0)}%) ·{" "}
+              <span className={changeClass(totalPnl)}>
+                {totalPnl >= 0 ? "+" : "-"}${fmtPrice(Math.abs(totalPnl))}
+              </span>{" "}
+              realized
+            </span>
+          )}
+        </h3>
+        {trades.length > 0 && (
+          <button
+            onClick={() => downloadTradesCsv(trades)}
+            className="rounded-md border border-(--color-border) px-2 py-1 text-xs text-(--color-text-dim) hover:text-(--color-text)"
+            title="Download all loaded trades as CSV (journal / tax records)"
+          >
+            Export CSV
+          </button>
+        )}
+      </div>
       {trades.length === 0 ? (
         <p className="py-8 text-center text-sm text-(--color-text-dim)">
           No trades yet. Bot is opt-in; click Start to begin scanning.
