@@ -11,6 +11,7 @@ import type {
 } from "../api/types";
 import { useCachedFetch, clearCacheKey, mutateCache } from "../hooks/useCachedFetch";
 import { changeClass, fmtPct, fmtPrice } from "../lib/format";
+import { ErBadge } from "./ErBadge";
 import { GuestPortfolioView } from "./GuestPortfolioView";
 import { OptionPnLModal } from "./OptionPnLModal";
 import { UpdatedAgo } from "./UpdatedAgo";
@@ -939,7 +940,10 @@ function SubPositionsTable({ positions }: { positions: SnapTradeStock[] }) {
           <tbody>
             {positions.map((p, i) => (
               <tr key={i} className="border-t border-(--color-border)">
-                <td className="py-1 font-medium">{p.ticker ?? "—"}</td>
+                <td className="py-1 font-medium">
+                  {p.ticker ?? "—"}
+                  <ErBadge days={p.earnings_days} />
+                </td>
                 <td className="py-1 text-right tabular-nums">{p.quantity}</td>
                 <td className="py-1 text-right tabular-nums">
                   {p.avg_cost ? `$${fmtPrice(p.avg_cost)}` : "—"}
@@ -1000,7 +1004,10 @@ function SubOptionsTable({ options }: { options: SnapTradeOption[] }) {
                 onClick={clickable ? () => onSelect?.(o) : undefined}
                 title={clickable ? "Open projected P/L" : undefined}
               >
-                <td className="py-1 font-medium">{o.underlying ?? "—"}</td>
+                <td className="py-1 font-medium">
+                  {o.underlying ?? "—"}
+                  <ErBadge days={o.earnings_days} />
+                </td>
                 <td className="py-1 capitalize">{o.option_type?.toLowerCase() ?? "—"}</td>
                 <td className="py-1 text-right tabular-nums">
                   {o.strike != null ? `$${o.strike}` : "—"}

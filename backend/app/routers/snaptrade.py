@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -7,10 +8,47 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import BrokerageAccountAlias, WatchlistTicker
-from ..services import alpaca, snaptrade_svc, streamer
+from ..services import alpaca, finnhub, snaptrade_svc, streamer
 from ..services.errors import provider_error
 
 router = APIRouter(prefix="/snaptrade", tags=["snaptrade"])
+
+EARNINGS_FLAG_WINDOW_DAYS = 14
+
+
+async def _attach_earnings_flags(flat: dict[str, Any]) -> None:
+    """Stamp `earnings_days` (days until next report, within 14d) on every
+    stock position and option row. Holding short-dated options into earnings
+    is a classic gamma trap — surfacing this on the holdings tables beats
+    discovering it after the IV crush.
+
+    One cached Finnhub calendar call covers all symbols. Best-effort: any
+    failure leaves rows unstamped and never breaks the holdings response."""
+    try:
+        earn = await finnhub.earnings_calendar(days_ahead=EARNINGS_FLAG_WINDOW_DAYS)
+    except Exception:
+        return
+    today = datetime.utcnow().date()
+    er_by_sym: dict[str, str] = {}
+    for e in earn:
+        s = (e.get("symbol") or "").upper()
+        d = e.get("date")
+        if s and d and (s not in er_by_sym or d < er_by_sym[s]):
+            er_by_sym[s] = d
+
+    def days_until(date_str: str | None) -> int | None:
+        if not date_str:
+            return None
+        try:
+            delta = (datetime.strptime(date_str, "%Y-%m-%d").date() - today).days
+        except ValueError:
+            return None
+        return delta if delta >= 0 else None
+
+    for row in flat["positions"]:
+        row["earnings_days"] = days_until(er_by_sym.get((row.get("ticker") or "").upper()))
+    for row in flat["options"]:
+        row["earnings_days"] = days_until(er_by_sym.get((row.get("underlying") or "").upper()))
 
 
 @router.get("/login-link")
@@ -440,15 +478,18 @@ def _consolidate_for_guest(flat: dict[str, Any]) -> dict[str, Any]:
     # ---- Stocks: collapse by ticker. Guests see weight only — no P/L. ----
     stock_groups: dict[str, float] = {}
     stock_descs: dict[str, str | None] = {}
+    stock_er: dict[str, int | None] = {}
     for p in flat["positions"]:
         t = p.get("ticker") or "—"
         stock_groups[t] = stock_groups.get(t, 0.0) + (p.get("market_value") or 0)
         if t not in stock_descs:
             stock_descs[t] = p.get("description")
+            stock_er[t] = p.get("earnings_days")
     consolidated_stocks = [
         {
             "ticker": t,
             "description": stock_descs.get(t),
+            "earnings_days": stock_er.get(t),
             "allocation_pct": (v / total_invested * 100) if total_invested else None,
         }
         for t, v in stock_groups.items()
@@ -472,6 +513,7 @@ def _consolidate_for_guest(flat: dict[str, Any]) -> dict[str, Any]:
                 "option_type": o.get("option_type"),
                 "strike": o.get("strike"),
                 "expiration": o.get("expiration"),
+                "earnings_days": o.get("earnings_days"),
             }
     consolidated_options = [
         {
@@ -596,6 +638,7 @@ async def get_holdings(request: Request, db: Session = Depends(get_db)) -> dict[
         _option_quotes_for_holdings(raw),
     )
     flat = _flatten(raw, prev_closes=prev_closes, option_quotes=option_quotes)
+    await _attach_earnings_flags(flat)
     # Apply user-chosen account nicknames.
     aliases = {a.account_id: a.nickname for a in db.query(BrokerageAccountAlias).all()}
     for acct in flat["accounts"]:

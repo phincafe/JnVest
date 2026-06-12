@@ -267,6 +267,8 @@ export type SnapTradeStock = {
   unrealized_pl_pct: number | null;
   /** Set only in guest mode: % of total invested portfolio. */
   allocation_pct?: number | null;
+  /** Days until next earnings report (≤14), null/absent otherwise. */
+  earnings_days?: number | null;
 };
 
 export type SnapTradeOption = {
@@ -286,6 +288,8 @@ export type SnapTradeOption = {
   unrealized_pl_pct: number | null;
   /** Set only in guest mode: % of total invested portfolio. */
   allocation_pct?: number | null;
+  /** Days until next earnings report (≤14), null/absent otherwise. */
+  earnings_days?: number | null;
 };
 
 export type SnapTradeOrder = {

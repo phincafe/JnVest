@@ -2,6 +2,7 @@ import { useContext, useMemo, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import type { SnapTradeHoldings } from "../api/types";
 import { fmtPrice } from "../lib/format";
+import { ErBadge } from "./ErBadge";
 import { OptionSelectionContext } from "./SnapTradePanel";
 
 type Slice = {
@@ -324,7 +325,10 @@ export function GuestPortfolioView({
               <tbody>
                 {holdings.positions.map((p, i) => (
                   <tr key={i} className="border-t border-(--color-border)">
-                    <td className="py-1.5 font-medium">{p.ticker ?? "—"}</td>
+                    <td className="py-1.5 font-medium">
+                      {p.ticker ?? "—"}
+                      <ErBadge days={p.earnings_days} />
+                    </td>
                     {ownerMode && (
                       <td className="py-1.5 text-right tabular-nums">
                         ${fmtPrice(p.market_value || 0, 0)}
