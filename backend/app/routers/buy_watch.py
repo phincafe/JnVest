@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..models import BuyTarget
 from ..services import alpaca
+from ..services.errors import provider_error
 from ..services.indicators import rsi
 
 router = APIRouter(prefix="/buy-watch", tags=["buy-watch"])
@@ -243,7 +244,7 @@ async def _enrich_targets(targets: list[BuyTarget]) -> list[dict[str, Any]]:
         trades = await alpaca.latest_trades(symbols)
         bars = await alpaca.daily_bars(symbols, days=280)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("Alpaca", e)) from e
     out: list[dict[str, Any]] = []
     for t in targets:
         sym = t.symbol.upper()
@@ -265,15 +266,24 @@ async def _enrich_targets(targets: list[BuyTarget]) -> list[dict[str, Any]]:
 
 
 @router.get("")
-async def list_targets(db: Session = Depends(get_db)) -> dict[str, Any]:
+async def list_targets(request: Request, db: Session = Depends(get_db)) -> dict[str, Any]:
     """Returns all buy targets enriched with current price, computed signals
-    (52w high, SMAs, RSI), trigger price, and status."""
+    (52w high, SMAs, RSI), trigger price, and status.
+
+    Guests get the list (part of the public showcase) but with the owner's
+    personal notes stripped."""
     rows = (
         db.query(BuyTarget).order_by(BuyTarget.sort_order.asc(), BuyTarget.created_at.asc()).all()
     )
     if not rows:
         return {"targets": []}
-    return {"targets": await _enrich_targets(rows)}
+    targets = await _enrich_targets(rows)
+    from ..main import is_guest
+
+    if is_guest(request):
+        for t in targets:
+            t["note"] = None
+    return {"targets": targets}
 
 
 def _require_owner(request: Request) -> None:

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..models import BrokerageAccountAlias, WatchlistTicker
 from ..services import alpaca, snaptrade_svc, streamer
+from ..services.errors import provider_error
 
 router = APIRouter(prefix="/snaptrade", tags=["snaptrade"])
 
@@ -23,7 +24,7 @@ def login_link(db: Session = Depends(get_db)) -> dict[str, str]:
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"SnapTrade error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("SnapTrade", e)) from e
     return {"url": url}
 
 
@@ -35,7 +36,7 @@ def list_authorizations(db: Session = Depends(get_db)) -> dict[str, Any]:
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"SnapTrade error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("SnapTrade", e)) from e
     return {"authorizations": items}
 
 
@@ -47,7 +48,7 @@ def remove_authorization(authorization_id: str, db: Session = Depends(get_db)) -
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"SnapTrade error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("SnapTrade", e)) from e
     return {"ok": True}
 
 
@@ -589,7 +590,7 @@ async def get_holdings(request: Request, db: Session = Depends(get_db)) -> dict[
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"SnapTrade error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("SnapTrade", e)) from e
     prev_closes, option_quotes = await asyncio.gather(
         _prev_closes_for_holdings(raw),
         _option_quotes_for_holdings(raw),
@@ -708,7 +709,7 @@ async def sync_to_watchlist(db: Session = Depends(get_db)) -> dict[str, Any]:
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"SnapTrade error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("SnapTrade", e)) from e
 
     flat = _flatten(raw)
     new_syms = _auto_add_to_watchlist(db, flat)
@@ -738,7 +739,7 @@ async def debug(request: Request, db: Session = Depends(get_db)) -> dict[str, An
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"SnapTrade error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("SnapTrade", e)) from e
 
     prev_closes, option_quotes = await asyncio.gather(
         _prev_closes_for_holdings(raw),

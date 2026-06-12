@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from ..config import get_settings
 from ..services import alpaca
+from ..services.errors import provider_error
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -46,5 +47,5 @@ async def submit(payload: OrderPayload) -> dict:
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("Alpaca", e)) from e
     return result

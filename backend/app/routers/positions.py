@@ -3,7 +3,7 @@ import io
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -11,8 +11,19 @@ from ..config import get_settings
 from ..db import get_db
 from ..models import ManualPosition
 from ..services import alpaca
+from ..services.errors import provider_error
 
 router = APIRouter(prefix="/positions", tags=["positions"])
+
+
+def _require_owner(request: Request) -> None:
+    """These endpoints return real personal positions (manual imports) or
+    paper-account details — owner-only even though they're GETs. The global
+    auth middleware only gates mutations, so each reader checks explicitly."""
+    from ..main import is_guest
+
+    if is_guest(request):
+        raise HTTPException(status_code=401, detail="owner login required")
 
 
 class ManualPositionIn(BaseModel):
@@ -41,14 +52,15 @@ class ManualPositionOut(BaseModel):
 
 
 @router.get("/account")
-async def account() -> dict[str, Any]:
+async def account(request: Request) -> dict[str, Any]:
+    _require_owner(request)
     settings = get_settings()
     if not (settings.alpaca_api_key and settings.alpaca_api_secret):
         raise HTTPException(status_code=400, detail="Alpaca not configured")
     try:
         a = await alpaca.get_account()
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("Alpaca", e)) from e
     return {
         "equity": float(a.get("equity", 0)),
         "last_equity": float(a.get("last_equity", 0)),
@@ -69,11 +81,12 @@ async def account() -> dict[str, Any]:
 
 
 @router.get("/alpaca")
-async def alpaca_positions() -> dict[str, Any]:
+async def alpaca_positions(request: Request) -> dict[str, Any]:
+    _require_owner(request)
     try:
         rows = await alpaca.get_positions()
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("Alpaca", e)) from e
     return {
         "positions": [
             {
@@ -94,11 +107,12 @@ async def alpaca_positions() -> dict[str, Any]:
 
 
 @router.get("/orders")
-async def alpaca_orders(limit: int = 20) -> dict[str, Any]:
+async def alpaca_orders(request: Request, limit: int = 20) -> dict[str, Any]:
+    _require_owner(request)
     try:
         rows = await alpaca.get_orders(limit=limit)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("Alpaca", e)) from e
     return {
         "orders": [
             {
@@ -141,7 +155,8 @@ def _row_to_out(row: ManualPosition, last_price: float | None = None) -> ManualP
 
 
 @router.get("/manual", response_model=list[ManualPositionOut])
-async def list_manual(db: Session = Depends(get_db)) -> list[ManualPositionOut]:
+async def list_manual(request: Request, db: Session = Depends(get_db)) -> list[ManualPositionOut]:
+    _require_owner(request)
     rows = db.query(ManualPosition).order_by(ManualPosition.created_at.desc()).all()
     if not rows:
         return []

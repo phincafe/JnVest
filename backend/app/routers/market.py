@@ -4,6 +4,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from ..services import alpaca, apewisdom, finnhub
+from ..services.errors import provider_error
 
 router = APIRouter(prefix="/market", tags=["market"])
 
@@ -47,7 +48,7 @@ async def indices() -> dict[str, Any]:
         trades = await alpaca.latest_trades(INDEX_SYMBOLS)
         bars = await alpaca.daily_bars(INDEX_SYMBOLS, days=5)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("Alpaca", e)) from e
     tiles = [_quote_tile(sym, trades.get(sym, {}), bars.get(sym, [])) for sym in INDEX_SYMBOLS]
     return {"tiles": tiles}
 
@@ -58,7 +59,7 @@ async def sectors() -> dict[str, Any]:
         trades = await alpaca.latest_trades(SECTOR_SYMBOLS)
         bars = await alpaca.daily_bars(SECTOR_SYMBOLS, days=5)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("Alpaca", e)) from e
     tiles = [_quote_tile(sym, trades.get(sym, {}), bars.get(sym, [])) for sym in SECTOR_SYMBOLS]
     return {"tiles": tiles}
 
@@ -101,7 +102,7 @@ async def sector_rotation() -> dict[str, Any]:
         # Need ~75 trading days for 3M lookback (≈63) with buffer.
         bars = await alpaca.daily_bars(SECTOR_SYMBOLS, days=140)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("Alpaca", e)) from e
 
     out: list[dict[str, Any]] = []
     for sym in SECTOR_SYMBOLS:
@@ -193,7 +194,7 @@ async def ai_watch() -> dict[str, Any]:
         # 140d ≈ enough history for a 3M (≈63 trading day) lookback with buffer.
         bars = await alpaca.daily_bars(all_syms, days=140)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("Alpaca", e)) from e
 
     groups: list[dict[str, Any]] = []
     for name, syms in AI_WATCH_GROUPS.items():
@@ -224,7 +225,7 @@ async def wsb(limit: int = 10) -> dict[str, Any]:
     try:
         items = await apewisdom.trending(filter_name="wallstreetbets", limit=limit)
     except Exception as e:
-        return {"items": [], "warning": f"ApeWisdom error: {e}"}
+        return {"items": [], "warning": provider_error("ApeWisdom", e)}
     return {"items": items}
 
 
@@ -291,7 +292,7 @@ async def movers(limit: int = 5) -> dict[str, Any]:
         trades = await alpaca.latest_trades(_MOVERS_UNIVERSE)
         bars = await alpaca.daily_bars(_MOVERS_UNIVERSE, days=5)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("Alpaca", e)) from e
 
     rows: list[dict[str, Any]] = []
     for sym in _MOVERS_UNIVERSE:
@@ -332,7 +333,7 @@ async def search(q: str, limit: int = 10) -> dict[str, Any]:
     except RuntimeError as e:
         return {"results": [], "warning": str(e)}
     except Exception as e:
-        return {"results": [], "warning": f"Finnhub error: {e}"}
+        return {"results": [], "warning": provider_error("Finnhub", e)}
     return {"results": results}
 
 
@@ -344,7 +345,7 @@ async def market_news(limit: int = 20) -> dict[str, Any]:
     except RuntimeError as e:
         return {"items": [], "warning": str(e)}
     except Exception as e:
-        return {"items": [], "warning": f"Finnhub error: {e}"}
+        return {"items": [], "warning": provider_error("Finnhub", e)}
     trimmed = [
         {
             "headline": it.get("headline"),
@@ -383,7 +384,7 @@ async def intraday(symbol: str, interval: str = "5Min") -> dict[str, Any]:
             alpaca.daily_bars([sym], days=5),
         )
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("Alpaca", e)) from e
 
     # prev_close = the most recent daily bar that isn't "today" (yesterday's
     # close for typical M-F, Friday's close on Mon, etc.).
@@ -413,7 +414,7 @@ async def macro() -> dict[str, Any]:
         trades = await alpaca.latest_trades(MACRO_SYMBOLS)
         bars = await alpaca.daily_bars(MACRO_SYMBOLS, days=35)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Alpaca error: {e}") from e
+        raise HTTPException(status_code=502, detail=provider_error("Alpaca", e)) from e
     out = {}
     for sym in MACRO_SYMBOLS:
         sym_bars = bars.get(sym, [])
