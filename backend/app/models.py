@@ -178,3 +178,20 @@ class IVHistory(Base):
     symbol: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     as_of_date: Mapped[str] = mapped_column(String(10), nullable=False, index=True)  # YYYY-MM-DD
     atm_iv: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class EquitySnapshot(Base):
+    """One row per day of total real-broker (SnapTrade) account value — feeds
+    the Portfolio equity curve. Upserted opportunistically whenever the
+    holdings endpoint runs, so days the app is never opened (and Render is
+    asleep) simply have no point. Latest fetch of the day wins."""
+
+    __tablename__ = "jnv_equity_snapshots"
+    __table_args__ = (UniqueConstraint("as_of_date", name="uq_jnv_equity_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    as_of_date: Mapped[str] = mapped_column(String(10), nullable=False, index=True)  # YYYY-MM-DD
+    equity: Mapped[float] = mapped_column(Float, nullable=False)
+    invested: Mapped[float] = mapped_column(Float, nullable=False)
+    cash: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

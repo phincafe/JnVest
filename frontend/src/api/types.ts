@@ -647,6 +647,15 @@ export type PriceAlert = {
   dismissed_at: string | null;
 };
 
+export type EquityPoint = {
+  date: string; // YYYY-MM-DD
+  equity: number;
+  invested: number;
+  cash: number;
+};
+
+export type EquityHistoryResponse = { points: EquityPoint[] };
+
 export type PriceAlertsResponse = {
   alerts: PriceAlert[];
   /** ISO time the backend evaluator last completed a tick — null until the

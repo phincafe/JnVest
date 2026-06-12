@@ -1,4 +1,5 @@
 import { CustomOptionPanel } from "../components/CustomOptionPanel";
+import { EquityCurve } from "../components/EquityCurve";
 import { RecentActivity } from "../components/RecentActivity";
 import { SnapTradePanel } from "../components/SnapTradePanel";
 
@@ -19,7 +20,11 @@ export default function PortfolioTab({
         refreshNonce={refreshNonce}
         isGuest={isGuest}
         afterOverview={
-          <RecentActivity refreshNonce={refreshNonce} isGuest={isGuest} />
+          <>
+            <RecentActivity refreshNonce={refreshNonce} isGuest={isGuest} />
+            {/* Equity history is $ amounts — owner only. */}
+            {!isGuest && <EquityCurve refreshNonce={refreshNonce} />}
+          </>
         }
       />
     </div>
