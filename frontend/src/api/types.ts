@@ -721,6 +721,8 @@ export type WcOdds = {
   over_under: number | string | null;
   spread: number | string | null;
   moneyline: { home: string | null; draw: string | null; away: string | null } | null;
+  /** True when the line shown is the live in-play price (vs pre-match). */
+  is_live?: boolean;
 };
 
 export type WcMatchEvent = {

@@ -196,9 +196,20 @@ def _odds(summary: dict[str, Any]) -> dict[str, Any] | None:
     if not pc:
         return None
     ml = pc.get("moneyline") or {}
+    used_live = False
 
     def side(name: str) -> str | None:
+        # ESPN's free summary feed carries a live in-play price ("current")
+        # only intermittently; when present we prefer it, else fall back to
+        # the closing (kickoff) line, then the opening line. We track whether
+        # a live value was actually used so the UI can label it honestly
+        # rather than claiming "live" when it's really the kickoff line.
+        nonlocal used_live
         o = ml.get(name) or {}
+        cur = o.get("current")
+        if cur and cur.get("odds"):
+            used_live = True
+            return cur.get("odds")
         node = o.get("close") or o.get("open") or {}
         return node.get("odds")
 
@@ -211,6 +222,8 @@ def _odds(summary: dict[str, Any]) -> dict[str, Any] | None:
         "over_under": pc.get("overUnder"),
         "spread": pc.get("spread"),
         "moneyline": moneyline,
+        # True only when the numbers above are the live in-play line.
+        "is_live": used_live,
     }
 
 
