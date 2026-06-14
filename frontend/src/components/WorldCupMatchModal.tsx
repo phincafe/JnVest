@@ -445,10 +445,30 @@ function ClaudeAnalysis({ eventId }: { eventId: string }) {
               note={data.markets.total_goals.note}
             />
             <MarketRow
+              label="Both teams to score"
+              lean={data.markets.btts.lean}
+              note={data.markets.btts.note}
+            />
+            <MarketRow
               label="Corners"
               tag={`proj. ${data.markets.corners.projected_total}`}
               lean={data.markets.corners.lean}
               note={data.markets.corners.note}
+            />
+            <MarketRow
+              label="Cards"
+              tag={`proj. ${data.markets.cards.projected_total}`}
+              lean={data.markets.cards.lean}
+              note={data.markets.cards.note}
+            />
+            <MarketRow
+              label="Goals by half"
+              lean={
+                data.markets.game_flow.higher_scoring_half === "even"
+                  ? "even"
+                  : `${data.markets.game_flow.higher_scoring_half} half`
+              }
+              note={data.markets.game_flow.note}
             />
           </div>
         </div>
@@ -488,19 +508,20 @@ function MarketRow({
   note,
 }: {
   label: string;
-  tag: string;
-  lean: "over" | "under" | "no edge";
+  tag?: string;
+  lean: string;
   note: string;
 }) {
+  // Neutral when there's no actionable edge; accent otherwise (over/under/yes/no).
   const leanCls =
-    lean === "no edge"
+    lean === "no edge" || lean === "even"
       ? "bg-(--color-text-dim)/15 text-(--color-text-dim)"
       : "bg-(--color-accent)/15 text-(--color-accent)";
   return (
     <div className="rounded-md bg-(--color-panel)/60 px-2 py-1.5">
       <div className="flex items-center gap-2">
         <span className="text-[11px] font-semibold">{label}</span>
-        <span className="text-[10px] tabular-nums text-(--color-text-dim)">{tag}</span>
+        {tag && <span className="text-[10px] tabular-nums text-(--color-text-dim)">{tag}</span>}
         <span
           className={`ml-auto rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${leanCls}`}
         >
