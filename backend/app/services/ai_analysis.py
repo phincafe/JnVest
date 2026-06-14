@@ -254,4 +254,17 @@ async def analyze(event_id: str, detail: dict[str, Any]) -> dict[str, Any]:
     try:
         return await cache.aget_or_set(cache_key, fetch, ttl_seconds=_TTL_SECONDS)
     except Exception as e:
-        return {"available": False, "warning": provider_error("Claude", e)}
+        import anthropic as _a
+
+        # TEMP diagnostic: surface the real failure so we can pinpoint it in
+        # production. Safe — the Anthropic key rides in a header, not in the
+        # exception string. Remove once the root cause is fixed.
+        return {
+            "available": False,
+            "warning": provider_error("Claude", e),
+            "debug": (
+                f"{type(e).__name__}: {str(e)[:280]} | "
+                f"sdk={getattr(_a, '__version__', '?')} "
+                f"model={settings.anthropic_model!r}"
+            ),
+        }
