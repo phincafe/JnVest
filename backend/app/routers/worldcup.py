@@ -34,3 +34,11 @@ async def match(event_id: str) -> dict[str, Any]:
         return await worldcup.match(event_id)
     except Exception as e:
         return {"id": event_id, "warning": provider_error("ESPN", e)}
+
+
+@router.get("/bracket")
+async def bracket() -> dict[str, Any]:
+    try:
+        return await worldcup.bracket()
+    except Exception as e:
+        return {"rounds": [], "warning": provider_error("ESPN", e)}
