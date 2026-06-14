@@ -12,11 +12,21 @@ import type {
 import { useState } from "react";
 import { Skeleton } from "../components/Skeleton";
 import { UpdatedAgo } from "../components/UpdatedAgo";
+import { WorldCupBracket } from "../components/WorldCupBracket";
 import { WorldCupMatchModal } from "../components/WorldCupMatchModal";
 import { useCachedFetch } from "../hooks/useCachedFetch";
 
+type View = "matches" | "bracket";
+
 export default function WorldCupTab({ refreshNonce }: { refreshNonce: number }) {
   const [openMatchId, setOpenMatchId] = useState<string | null>(null);
+  const [view, setView] = useState<View>(
+    () => (sessionStorage.getItem("jnv:wc-view") as View) || "matches",
+  );
+  const pick = (v: View) => {
+    sessionStorage.setItem("jnv:wc-view", v);
+    setView(v);
+  };
   const sb = useCachedFetch<WcScoreboard>(
     "worldcup:scoreboard",
     () => api.get("/worldcup/scoreboard"),
@@ -35,16 +45,44 @@ export default function WorldCupTab({ refreshNonce }: { refreshNonce: number }) 
         eventId={openMatchId}
         onClose={() => setOpenMatchId(null)}
       />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-lg font-semibold">
+          🏆 World Cup 2026
+          {(sb.data?.live_count ?? 0) > 0 && (
+            <span className="flex items-center gap-1 rounded bg-(--color-down)/20 px-2 py-0.5 text-xs font-semibold text-(--color-down)">
+              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-(--color-down)" />
+              {sb.data!.live_count} LIVE
+            </span>
+          )}
+        </h2>
+        <div className="inline-flex rounded-md border border-(--color-border) bg-(--color-panel) p-0.5 text-xs">
+          {(["matches", "bracket"] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => pick(v)}
+              className={`rounded px-3 py-1 font-medium capitalize ${
+                view === v
+                  ? "bg-(--color-accent) text-white"
+                  : "text-(--color-text-dim) hover:text-(--color-text)"
+              }`}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {view === "bracket" ? (
+        <WorldCupBracket
+          refreshNonce={refreshNonce}
+          onOpenMatch={setOpenMatchId}
+        />
+      ) : (
+        <>
       <section className="space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="flex items-center gap-2 text-lg font-semibold">
-            🏆 World Cup 2026
-            {(sb.data?.live_count ?? 0) > 0 && (
-              <span className="flex items-center gap-1 rounded bg-(--color-down)/20 px-2 py-0.5 text-xs font-semibold text-(--color-down)">
-                <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-(--color-down)" />
-                {sb.data!.live_count} LIVE
-              </span>
-            )}
+          <h2 className="text-sm font-medium text-(--color-text-dim)">
+            Today's matches
           </h2>
           <UpdatedAgo fetchedAt={sb.fetchedAt} />
         </div>
@@ -92,6 +130,8 @@ export default function WorldCupTab({ refreshNonce }: { refreshNonce: number }) 
           </div>
         )}
       </section>
+        </>
+      )}
     </div>
   );
 }

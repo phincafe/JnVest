@@ -697,6 +697,9 @@ export type WcStandingRow = {
 export type WcGroup = { name: string | null; teams: WcStandingRow[] };
 export type WcStandings = { groups: WcGroup[]; warning?: string };
 
+export type WcBracketRound = { slug: string; label: string; matches: WcEvent[] };
+export type WcBracket = { rounds: WcBracketRound[]; warning?: string };
+
 export type WcMatchSide = {
   id: string | null;
   name: string | null;

@@ -148,6 +148,49 @@ async def standings() -> dict[str, Any]:
     return await cache.aget_or_set("worldcup:standings", fetch, ttl_seconds=300)
 
 
+# ESPN tags each knockout fixture with season.slug. Order + display labels.
+# Before the group stage ends the matches exist as placeholders (e.g.
+# "Group A 2nd Place" vs "Group B 2nd Place") and fill in with real teams as
+# results land — so the bracket is correct now and auto-populates.
+_KO_ROUNDS: list[tuple[str, str]] = [
+    ("round-of-32", "Round of 32"),
+    ("round-of-16", "Round of 16"),
+    ("quarterfinals", "Quarterfinals"),
+    ("semifinals", "Semifinals"),
+    ("3rd-place-match", "Third place"),
+    ("final", "Final"),
+]
+# Whole knockout window (FIFA-fixed). Slightly padded on both ends.
+_KO_DATE_RANGE = "20260626-20260720"
+
+
+async def bracket() -> dict[str, Any]:
+    """Knockout bracket: rounds (R32 → Final) each with their matches.
+    Cached 60s so scores feel live on match days without hammering ESPN."""
+
+    async def fetch() -> dict[str, Any]:
+        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            r = await client.get(f"{BASE}/scoreboard", params={"dates": _KO_DATE_RANGE})
+            r.raise_for_status()
+            body = r.json() or {}
+        by_slug: dict[str, list[dict[str, Any]]] = {}
+        for ev in body.get("events") or []:
+            slug = (ev.get("season") or {}).get("slug")
+            if not slug:
+                continue
+            by_slug.setdefault(slug, []).append(_parse_event(ev))
+        rounds = []
+        for slug, label in _KO_ROUNDS:
+            matches = by_slug.get(slug)
+            if not matches:
+                continue
+            matches.sort(key=lambda m: m.get("date") or "")
+            rounds.append({"slug": slug, "label": label, "matches": matches})
+        return {"rounds": rounds}
+
+    return await cache.aget_or_set("worldcup:bracket", fetch, ttl_seconds=60)
+
+
 # Match-stat fields we surface, in display order. (espn_name, label, suffix).
 # wonCorners is the per-team corner count the user asked for.
 _STAT_SPECS: list[tuple[str, str, str]] = [
