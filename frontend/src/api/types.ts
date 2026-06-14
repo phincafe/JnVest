@@ -806,6 +806,20 @@ export type WcTeamBrief = {
   risks: string[];
 };
 
+/** Claude's read on the goals over/under and corner-total markets. */
+export type WcMarkets = {
+  total_goals: {
+    line: string; // the O/U line reasoned against, or "n/a"
+    lean: "over" | "under" | "no edge";
+    note: string;
+  };
+  corners: {
+    projected_total: string; // estimate, e.g. "9-11"
+    lean: "over" | "under" | "no edge";
+    note: string;
+  };
+};
+
 /** Claude-generated prediction brief for a match (GET /worldcup/match/{id}/analysis).
  * `available: false` + `warning` when the key is unset or Claude is down. */
 export type WcMatchAnalysis = {
@@ -817,6 +831,7 @@ export type WcMatchAnalysis = {
   home?: WcTeamBrief;
   away?: WcTeamBrief;
   key_factors?: string[];
+  markets?: WcMarkets;
   watch?: string;
   home_team?: string | null;
   away_team?: string | null;
