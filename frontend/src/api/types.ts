@@ -799,6 +799,30 @@ export type WcMatchDetail = {
   warning?: string;
 };
 
+/** One team's scouting brief inside a Claude match analysis. */
+export type WcTeamBrief = {
+  summary: string;
+  strengths: string[];
+  risks: string[];
+};
+
+/** Claude-generated prediction brief for a match (GET /worldcup/match/{id}/analysis).
+ * `available: false` + `warning` when the key is unset or Claude is down. */
+export type WcMatchAnalysis = {
+  available: boolean;
+  warning?: string;
+  headline?: string;
+  lean?: "home" | "away" | "draw" | "toss-up";
+  confidence?: "low" | "medium" | "high";
+  home?: WcTeamBrief;
+  away?: WcTeamBrief;
+  key_factors?: string[];
+  watch?: string;
+  home_team?: string | null;
+  away_team?: string | null;
+  model?: string;
+};
+
 export type EquityPoint = {
   date: string; // YYYY-MM-DD
   equity: number;

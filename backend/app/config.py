@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     # fall back to ESPN's (laggy) feed when this is unset or quota is spent.
     odds_api_key: str = ""
 
+    # Anthropic / Claude API — powers the on-demand "Analyze with Claude"
+    # match-prediction brief in the World Cup tab. Unset → the feature is
+    # gated off (the modal shows a one-line "set a key" hint, no error).
+    # Get a key at https://console.anthropic.com. wc_analysis_model lets the
+    # owner trade quality for cost (e.g. claude-haiku-4-5) without a redeploy.
+    anthropic_api_key: str = ""
+    wc_analysis_model: str = "claude-opus-4-8"
+
     # SnapTrade — sign up at https://dashboard.snaptrade.com (free tier: 5 connections)
     snaptrade_client_id: str = ""
     snaptrade_consumer_key: str = ""

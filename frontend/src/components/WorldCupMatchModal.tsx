@@ -1,10 +1,16 @@
 /** Match detail modal — live team stats (corners, possession, shots, cards),
  * betting odds, and goal/card events. Polls every 20s while open so a live
  * match stays current. Data: ESPN summary endpoint. */
-import { useEffect } from "react";
-import { X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Loader2, RefreshCw, Sparkles, X } from "lucide-react";
 import { api } from "../api/client";
-import type { WcMatchDetail, WcMatchSide, WcMatchStat } from "../api/types";
+import type {
+  WcMatchAnalysis,
+  WcMatchDetail,
+  WcMatchSide,
+  WcMatchStat,
+  WcTeamBrief,
+} from "../api/types";
 import { useCachedFetch } from "../hooks/useCachedFetch";
 import { Skeleton } from "./Skeleton";
 
@@ -94,6 +100,9 @@ export function WorldCupMatchModal({
                 )}
               </p>
             )}
+
+            {/* Claude prediction brief — on demand */}
+            <ClaudeAnalysis eventId={eventId} />
 
             {/* Betting odds */}
             {data.odds?.moneyline && (
@@ -310,6 +319,167 @@ function StatBar({ stat }: { stat: WcMatchStat }) {
           style={{ width: `${100 - homePct}%` }}
         />
       </div>
+    </div>
+  );
+}
+
+/** On-demand Claude scouting brief: both teams summarized + a prediction lean,
+ * built from the same live data shown above (odds, stats, standings, weather).
+ * Fetched only when the user clicks — it costs an API call — and cached by the
+ * SWR hook so re-opening the section is free. */
+function ClaudeAnalysis({ eventId }: { eventId: string }) {
+  const [requested, setRequested] = useState(false);
+  const { data, isFetching, error, refetch } = useCachedFetch<WcMatchAnalysis>(
+    requested ? `worldcup:analysis:${eventId}` : null,
+    () => api.get(`/worldcup/match/${eventId}/analysis`),
+    { staleAfterMs: 10 * 60_000 },
+  );
+
+  if (!requested) {
+    return (
+      <button
+        onClick={() => setRequested(true)}
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-(--color-accent)/40 bg-(--color-accent)/10 px-3 py-2.5 text-sm font-semibold text-(--color-accent) transition hover:bg-(--color-accent)/20"
+      >
+        <Sparkles size={15} />
+        Analyze both teams with Claude
+      </button>
+    );
+  }
+
+  if (isFetching && !data) {
+    return (
+      <div className="mt-4 flex items-center justify-center gap-2 rounded-lg border border-(--color-border) bg-(--color-panel-2)/40 px-3 py-4 text-sm text-(--color-text-dim)">
+        <Loader2 size={15} className="animate-spin" />
+        Claude is scouting both teams…
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="mt-4 rounded-lg border border-(--color-border) bg-(--color-panel-2)/40 p-3 text-center text-xs text-(--color-text-dim)">
+        Could not reach Claude.{" "}
+        <button onClick={refetch} className="font-medium underline">
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (!data.available) {
+    return (
+      <div className="mt-4 rounded-lg border border-(--color-border) bg-(--color-panel-2)/40 p-3 text-center text-xs text-(--color-text-dim)">
+        {data.warning ?? "Claude analysis is unavailable right now."}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 rounded-lg border border-(--color-accent)/30 bg-(--color-accent)/5 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-(--color-accent)">
+          <Sparkles size={12} /> Claude prediction
+        </span>
+        <button
+          onClick={refetch}
+          disabled={isFetching}
+          aria-label="Re-analyze"
+          className="-m-1 rounded p-1 text-(--color-text-dim) hover:text-(--color-text) disabled:opacity-50"
+        >
+          <RefreshCw size={13} className={isFetching ? "animate-spin" : ""} />
+        </button>
+      </div>
+
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="rounded-md bg-(--color-up)/15 px-2 py-0.5 text-xs font-semibold text-(--color-up)">
+          Lean: {leanLabel(data)}
+        </span>
+        {data.confidence && (
+          <span
+            className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${confCls(data.confidence)}`}
+          >
+            {data.confidence} confidence
+          </span>
+        )}
+      </div>
+
+      {data.headline && <p className="text-sm font-medium">{data.headline}</p>}
+
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <TeamBrief name={data.home_team ?? "Home"} brief={data.home} />
+        <TeamBrief name={data.away_team ?? "Away"} brief={data.away} />
+      </div>
+
+      {data.key_factors && data.key_factors.length > 0 && (
+        <div className="mt-3">
+          <div className="mb-1 text-[10px] uppercase tracking-wide text-(--color-text-dim)">
+            Key factors
+          </div>
+          <ul className="space-y-1">
+            {data.key_factors.map((f, i) => (
+              <li key={i} className="flex gap-1.5 text-xs">
+                <span className="text-(--color-accent)">•</span>
+                <span>{f}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {data.watch && (
+        <p className="mt-3 rounded-md bg-(--color-panel-2)/50 px-2 py-1.5 text-xs">
+          <span className="font-semibold">Watch:</span> {data.watch}
+        </p>
+      )}
+
+      <p className="mt-2 text-center text-[9px] text-(--color-text-dim)/70">
+        AI-generated from live data · not financial advice
+        {data.model ? ` · ${data.model}` : ""}
+      </p>
+    </div>
+  );
+}
+
+function leanLabel(a: WcMatchAnalysis): string {
+  if (a.lean === "home") return a.home_team ?? "Home";
+  if (a.lean === "away") return a.away_team ?? "Away";
+  if (a.lean === "draw") return "Draw";
+  return "Too close to call";
+}
+
+function confCls(c: "low" | "medium" | "high"): string {
+  if (c === "high") return "bg-(--color-up)/15 text-(--color-up)";
+  if (c === "low") return "bg-(--color-text-dim)/15 text-(--color-text-dim)";
+  return "bg-yellow-500/15 text-yellow-400";
+}
+
+function TeamBrief({ name, brief }: { name: string; brief?: WcTeamBrief }) {
+  if (!brief) return null;
+  return (
+    <div className="rounded-md border border-(--color-border) bg-(--color-panel) p-2.5">
+      <div className="mb-1 truncate text-xs font-semibold">{name}</div>
+      <p className="text-[11px] text-(--color-text-dim)">{brief.summary}</p>
+      {brief.strengths && brief.strengths.length > 0 && (
+        <ul className="mt-1.5 space-y-0.5">
+          {brief.strengths.map((s, i) => (
+            <li key={i} className="flex gap-1 text-[11px]">
+              <span className="text-(--color-up)">+</span>
+              <span>{s}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {brief.risks && brief.risks.length > 0 && (
+        <ul className="mt-1 space-y-0.5">
+          {brief.risks.map((r, i) => (
+            <li key={i} className="flex gap-1 text-[11px]">
+              <span className="text-(--color-down)">−</span>
+              <span className="text-(--color-text-dim)">{r}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
