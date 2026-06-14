@@ -93,7 +93,7 @@ export function WorldCupMatchModal({
                 <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-wide text-(--color-text-dim)">
                   <span>
                     {data.odds.is_live
-                      ? "Live odds (moneyline)"
+                      ? "In-play odds (moneyline)"
                       : "Odds · at kickoff (moneyline)"}
                   </span>
                   <span>{data.odds.provider ?? ""}</span>
@@ -110,6 +110,12 @@ export function WorldCupMatchModal({
                     )}
                     {data.odds.details && <span>Spread {data.odds.details}</span>}
                   </div>
+                )}
+                {data.odds.is_live && (
+                  <p className="mt-1.5 text-center text-[9px] text-(--color-text-dim)/60">
+                    ESPN in-play line — can be delayed several minutes vs
+                    sportsbooks
+                  </p>
                 )}
               </div>
             )}
