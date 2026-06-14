@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 
-from . import cache
+from . import cache, oddsapi
 
 BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world"
 # Standings live under the v2 core path, not the site path.
@@ -437,6 +437,15 @@ async def match(event_id: str) -> dict[str, Any]:
         home_stats = stat_by_id.get((home or {}).get("id"), {})
         away_stats = stat_by_id.get((away or {}).get("id"), {})
 
+        # Real-time sportsbook line (The Odds API) when configured + in quota,
+        # else ESPN's live-but-laggy provider, else the kickoff line.
+        book_odds = None
+        games = await oddsapi.h2h_games()
+        if games:
+            book_odds = oddsapi.match_moneyline(
+                games, (home or {}).get("name"), (away or {}).get("name")
+            )
+
         stats = []
         for name, label, suffix in _STAT_SPECS:
             hv, av = home_stats.get(name), away_stats.get(name)
@@ -461,7 +470,7 @@ async def match(event_id: str) -> dict[str, Any]:
             "home": home,
             "away": away,
             "stats": stats,
-            "odds": core or _odds(s),
+            "odds": book_odds or core or _odds(s),
             "events": _key_events(s),
         }
 

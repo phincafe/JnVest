@@ -27,6 +27,10 @@ class Settings(BaseSettings):
 
     finnhub_api_key: str = ""
     fred_api_key: str = ""
+    # The Odds API (the-odds-api.com) — real-time sportsbook odds for the
+    # World Cup tab. Free tier is 500 req/month, so callers cache hard and
+    # fall back to ESPN's (laggy) feed when this is unset or quota is spent.
+    odds_api_key: str = ""
 
     # SnapTrade — sign up at https://dashboard.snaptrade.com (free tier: 5 connections)
     snaptrade_client_id: str = ""
