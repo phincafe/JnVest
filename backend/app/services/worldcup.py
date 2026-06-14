@@ -19,6 +19,9 @@ from . import cache
 BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world"
 # Standings live under the v2 core path, not the site path.
 STANDINGS_URL = "https://site.api.espn.com/apis/v2/sports/soccer/fifa.world/standings"
+# Core API exposes per-provider odds, including a "Live Odds" provider with
+# in-play prices. The `site` summary endpoint only carries the kickoff line.
+ODDS_CORE = "https://sports.core.api.espn.com/v2/sports/soccer/leagues/fifa.world"
 TIMEOUT = httpx.Timeout(8.0)
 
 
@@ -323,6 +326,67 @@ def _odds(summary: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def _american(side: dict[str, Any]) -> str | None:
+    """American-odds string for one outcome of a core-API odds provider.
+    Prefers the live `current` moneyline, else the provider's top-level one."""
+    cur = side.get("current") or {}
+    m = cur.get("moneyLine")
+    if isinstance(m, dict):
+        if m.get("american"):
+            return m["american"]
+        v = m.get("value")
+    else:
+        v = m
+    if v is None:
+        v = side.get("moneyLine")
+    if not isinstance(v, (int, float)):
+        return None
+    n = int(round(v))
+    return f"+{n}" if n > 0 else str(n)
+
+
+async def _core_odds(client: httpx.AsyncClient, event_id: str) -> dict[str, Any] | None:
+    """Live in-play odds from the core API's 'Live Odds' provider, falling
+    back to the standard (kickoff) provider. The summary feed only has the
+    kickoff line, so this is what makes the modal's odds actually move during
+    a match. ESPN's public live line lags its own widget by a few minutes —
+    the UI flags that. Returns None to let the caller fall back to summary."""
+    try:
+        r = await client.get(f"{ODDS_CORE}/events/{event_id}/competitions/{event_id}/odds")
+        r.raise_for_status()
+        items = (r.json() or {}).get("items") or []
+    except Exception:
+        return None
+    if not items:
+        return None
+    live = next(
+        (it for it in items if "live" in ((it.get("provider") or {}).get("name") or "").lower()),
+        None,
+    )
+    main = next((it for it in items if str((it.get("provider") or {}).get("id")) == "100"), None)
+    src = live or main or items[0]
+    # The provider's odds usually sit behind a $ref; follow it for fresh data.
+    ref = src.get("$ref")
+    if ref:
+        try:
+            src = (await client.get(ref)).json()
+        except Exception:
+            pass
+    home = _american(src.get("homeTeamOdds") or {})
+    draw = _american(src.get("drawOdds") or {})
+    away = _american(src.get("awayTeamOdds") or {})
+    if not (home or draw or away):
+        return None
+    return {
+        "provider": (src.get("provider") or {}).get("name"),
+        "details": src.get("details"),
+        "over_under": src.get("overUnder"),
+        "spread": src.get("spread"),
+        "moneyline": {"home": home, "draw": draw, "away": away},
+        "is_live": bool(live),
+    }
+
+
 def _key_events(summary: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for e in summary.get("keyEvents") or []:
@@ -352,6 +416,9 @@ async def match(event_id: str) -> dict[str, Any]:
             r = await client.get(f"{BASE}/summary", params={"event": event_id})
             r.raise_for_status()
             s = r.json() or {}
+            # Prefer the core API's live in-play line; fall back to the
+            # summary's kickoff line when the live provider isn't available.
+            core = await _core_odds(client, event_id)
 
         header = s.get("header") or {}
         comp = (header.get("competitions") or [{}])[0]
@@ -394,7 +461,7 @@ async def match(event_id: str) -> dict[str, Any]:
             "home": home,
             "away": away,
             "stats": stats,
-            "odds": _odds(s),
+            "odds": core or _odds(s),
             "events": _key_events(s),
         }
 
