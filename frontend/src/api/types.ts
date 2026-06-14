@@ -806,16 +806,29 @@ export type WcTeamBrief = {
   risks: string[];
 };
 
-/** Claude's read on the goals over/under and corner-total markets. */
+/** Claude's read on secondary betting markets. */
 export type WcMarkets = {
   total_goals: {
     line: string; // the O/U line reasoned against, or "n/a"
     lean: "over" | "under" | "no edge";
     note: string;
   };
+  btts: {
+    lean: "yes" | "no" | "no edge";
+    note: string;
+  };
   corners: {
     projected_total: string; // estimate, e.g. "9-11"
     lean: "over" | "under" | "no edge";
+    note: string;
+  };
+  cards: {
+    projected_total: string; // estimate, e.g. "4-6"
+    lean: "over" | "under" | "no edge";
+    note: string;
+  };
+  game_flow: {
+    higher_scoring_half: "first" | "second" | "even";
     note: string;
   };
 };

@@ -50,17 +50,25 @@ player names, injuries, suspensions, or results that are not present in the data
 data is thin (e.g. a pre-match game with no stats), say so and rate the read low-confidence \
 rather than fabricating specifics.
 
-Also give a read on two secondary betting markets:
+Also give a read on these secondary betting markets:
 - markets.total_goals: lean over or under the posted goals line (the "Total goals O/U" in \
 the data). If a live match, factor the current score, minute, and remaining time into the \
 pace. If no line is given, estimate the expected total and lean relative to a 2.5 line. Put \
 the line you reasoned against in `line` (or "n/a"), and explain the pace logic in `note`.
+- markets.btts: both teams to score — lean "yes" or "no". Weigh each side's attacking \
+threat and defensive solidity; if a team has already scored, factor that and the time left.
 - markets.corners: a corners total is NOT in the data, so estimate the projected full-match \
 total corners from both teams' attacking style and (if live) the current corner count + \
 minute. Put a number or tight range in `projected_total`, set `lean` to over/under a typical \
-World Cup line (~9.5-10.5) or "no edge", and justify in `note`. Be explicit this is an \
-estimate, not a posted line.
-For either market, use lean "no edge" when the data doesn't support a confident side.
+World Cup line (~9.5-10.5), and justify in `note`. Be explicit this is an estimate, not a \
+posted line.
+- markets.cards: estimate the projected full-match total cards (yellows + reds) from the \
+foul count, match intensity, and (if live) current cards + minute. Put a number/range in \
+`projected_total`, lean over/under a typical line (~4.5-5.5 cards), and note it's an estimate.
+- markets.game_flow: which half is likelier to produce more goals — "first", "second", or \
+"even" — with a one-sentence read on tempo and first-half vs full-match dynamics (fast \
+starts, game-state effects, heat/fatigue favoring late goals).
+Use lean "no edge" (or "even" for game_flow) when the data doesn't support a confident side.
 
 Keep each team summary to 2-3 sentences. strengths and risks: 2-3 short phrases each. \
 key_factors: 2-4 punchy bullets that actually drive your lean. watch: one sentence on the \
@@ -101,10 +109,47 @@ _CORNERS_MARKET = {
     "additionalProperties": False,
 }
 
+_BTTS_MARKET = {
+    "type": "object",
+    "properties": {
+        "lean": {"type": "string", "enum": ["yes", "no", "no edge"]},
+        "note": {"type": "string"},
+    },
+    "required": ["lean", "note"],
+    "additionalProperties": False,
+}
+
+_CARDS_MARKET = {
+    "type": "object",
+    "properties": {
+        "projected_total": {"type": "string"},  # estimate, e.g. "4-6"
+        "lean": {"type": "string", "enum": ["over", "under", "no edge"]},
+        "note": {"type": "string"},
+    },
+    "required": ["projected_total", "lean", "note"],
+    "additionalProperties": False,
+}
+
+_GAME_FLOW = {
+    "type": "object",
+    "properties": {
+        "higher_scoring_half": {"type": "string", "enum": ["first", "second", "even"]},
+        "note": {"type": "string"},
+    },
+    "required": ["higher_scoring_half", "note"],
+    "additionalProperties": False,
+}
+
 _MARKETS = {
     "type": "object",
-    "properties": {"total_goals": _GOALS_MARKET, "corners": _CORNERS_MARKET},
-    "required": ["total_goals", "corners"],
+    "properties": {
+        "total_goals": _GOALS_MARKET,
+        "btts": _BTTS_MARKET,
+        "corners": _CORNERS_MARKET,
+        "cards": _CARDS_MARKET,
+        "game_flow": _GAME_FLOW,
+    },
+    "required": ["total_goals", "btts", "corners", "cards", "game_flow"],
     "additionalProperties": False,
 }
 
@@ -235,6 +280,10 @@ def _build_context(detail: dict[str, Any]) -> str:
         if corners:
             ct = (corners.get("home_num") or 0) + (corners.get("away_num") or 0)
             pace.append(f"corners so far {int(ct)}")
+        card_stats = [s for s in stats if s.get("label") in ("Yellow cards", "Red cards")]
+        if card_stats:
+            cards = sum((s.get("home_num") or 0) + (s.get("away_num") or 0) for s in card_stats)
+            pace.append(f"cards so far {int(cards)}")
         if pace:
             lines.append("Pace: " + ", ".join(pace) + " (extrapolate to full-time)")
 
