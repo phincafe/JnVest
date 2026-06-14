@@ -700,6 +700,24 @@ export type WcStandings = { groups: WcGroup[]; warning?: string };
 export type WcBracketRound = { slug: string; label: string; matches: WcEvent[] };
 export type WcBracket = { rounds: WcBracketRound[]; warning?: string };
 
+export type WcScorer = {
+  rank: number;
+  name: string | null;
+  short_name: string | null;
+  jersey: string | null;
+  team: string | null;
+  team_abbr: string | null;
+  team_logo: string | null;
+  value: number;
+  matches: number | null;
+};
+
+export type WcScorers = {
+  goals: WcScorer[];
+  assists: WcScorer[];
+  warning?: string;
+};
+
 export type WcMatchSide = {
   id: string | null;
   name: string | null;

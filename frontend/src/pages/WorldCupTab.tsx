@@ -14,9 +14,10 @@ import { Skeleton } from "../components/Skeleton";
 import { UpdatedAgo } from "../components/UpdatedAgo";
 import { WorldCupBracket } from "../components/WorldCupBracket";
 import { WorldCupMatchModal } from "../components/WorldCupMatchModal";
+import { WorldCupScorers } from "../components/WorldCupScorers";
 import { useCachedFetch } from "../hooks/useCachedFetch";
 
-type View = "matches" | "bracket";
+type View = "matches" | "bracket" | "scorers";
 
 export default function WorldCupTab({ refreshNonce }: { refreshNonce: number }) {
   const [openMatchId, setOpenMatchId] = useState<string | null>(null);
@@ -56,7 +57,7 @@ export default function WorldCupTab({ refreshNonce }: { refreshNonce: number }) 
           )}
         </h2>
         <div className="inline-flex rounded-md border border-(--color-border) bg-(--color-panel) p-0.5 text-xs">
-          {(["matches", "bracket"] as const).map((v) => (
+          {(["matches", "bracket", "scorers"] as const).map((v) => (
             <button
               key={v}
               onClick={() => pick(v)}
@@ -77,6 +78,8 @@ export default function WorldCupTab({ refreshNonce }: { refreshNonce: number }) 
           refreshNonce={refreshNonce}
           onOpenMatch={setOpenMatchId}
         />
+      ) : view === "scorers" ? (
+        <WorldCupScorers refreshNonce={refreshNonce} />
       ) : (
         <>
       <section className="space-y-3">
