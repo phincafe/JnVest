@@ -219,13 +219,15 @@ async def analyze(event_id: str, detail: dict[str, Any]) -> dict[str, Any]:
         from anthropic import AsyncAnthropic  # lazy: never block app boot
 
         client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+        # Empty env value (var created but left blank) → fall back to the default.
+        model = settings.anthropic_model or "claude-opus-4-8"
         context = (
             f"Teams: {home_name} (home) vs {away_name} (away).\n\n"
             f"{_build_context(detail)}\n\n"
             "Analyze both teams and give me a prediction lean to help me bet."
         )
         resp = await client.messages.create(
-            model=settings.wc_analysis_model,
+            model=model,
             max_tokens=_MAX_TOKENS,
             thinking={"type": "adaptive"},
             system=[{"type": "text", "text": _SYSTEM, "cache_control": {"type": "ephemeral"}}],
@@ -244,7 +246,7 @@ async def analyze(event_id: str, detail: dict[str, Any]) -> dict[str, Any]:
                 "available": True,
                 "home_team": home_name,
                 "away_team": away_name,
-                "model": settings.wc_analysis_model,
+                "model": model,
             }
         )
         return data
