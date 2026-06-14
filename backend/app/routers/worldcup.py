@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from ..services import oddsapi, worldcup
+from ..services import ai_analysis, oddsapi, worldcup
 from ..services.errors import provider_error
 
 router = APIRouter(prefix="/worldcup", tags=["worldcup"])
@@ -34,6 +34,18 @@ async def match(event_id: str) -> dict[str, Any]:
         return await worldcup.match(event_id)
     except Exception as e:
         return {"id": event_id, "warning": provider_error("ESPN", e)}
+
+
+@router.get("/match/{event_id}/analysis")
+async def match_analysis(event_id: str) -> dict[str, Any]:
+    """Claude-generated scouting brief + prediction lean for a match. On-demand
+    (the UI calls this only when the user clicks "Analyze with Claude") because
+    it costs an API call; gated on ANTHROPIC_API_KEY and degrades to a warning."""
+    try:
+        detail = await worldcup.match(event_id)
+        return await ai_analysis.analyze(event_id, detail)
+    except Exception as e:
+        return {"available": False, "warning": provider_error("Claude", e)}
 
 
 @router.get("/bracket")
