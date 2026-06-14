@@ -697,6 +697,52 @@ export type WcStandingRow = {
 export type WcGroup = { name: string | null; teams: WcStandingRow[] };
 export type WcStandings = { groups: WcGroup[]; warning?: string };
 
+export type WcMatchSide = {
+  id: string | null;
+  name: string | null;
+  abbr: string | null;
+  logo: string | null;
+  score: number | null;
+  winner: boolean;
+};
+
+export type WcMatchStat = {
+  label: string;
+  suffix: string;
+  home: string | null;
+  away: string | null;
+  home_num: number | null;
+  away_num: number | null;
+};
+
+export type WcOdds = {
+  provider: string | null;
+  details: string | null;
+  over_under: number | string | null;
+  spread: number | string | null;
+  moneyline: { home: string | null; draw: string | null; away: string | null } | null;
+};
+
+export type WcMatchEvent = {
+  clock: string | null;
+  type: string | null;
+  text: string | null;
+  team_abbr: string | null;
+};
+
+export type WcMatchDetail = {
+  id: string | null;
+  state?: "pre" | "in" | "post" | null;
+  status_detail?: string | null;
+  venue?: string | null;
+  home?: WcMatchSide | null;
+  away?: WcMatchSide | null;
+  stats?: WcMatchStat[];
+  odds?: WcOdds | null;
+  events?: WcMatchEvent[];
+  warning?: string;
+};
+
 export type EquityPoint = {
   date: string; // YYYY-MM-DD
   equity: number;
