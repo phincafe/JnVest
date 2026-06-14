@@ -191,6 +191,59 @@ async def bracket() -> dict[str, Any]:
     return await cache.aget_or_set("worldcup:bracket", fetch, ttl_seconds=60)
 
 
+def _scorer_row(rank: int, leader: dict[str, Any]) -> dict[str, Any]:
+    a = leader.get("athlete") or {}
+    team = a.get("team") or {}
+    logo = None
+    logos = team.get("logos") or []
+    if logos:
+        logo = logos[0].get("href")
+    logo = logo or team.get("logo")
+    # displayValue looks like "Matches: 3, Goals: 2" — pull matches for a
+    # goals-per-match read without a second request.
+    matches = None
+    dv = leader.get("displayValue") or ""
+    if "Matches:" in dv:
+        try:
+            matches = int(dv.split("Matches:")[1].split(",")[0].strip())
+        except (ValueError, IndexError):
+            matches = None
+    return {
+        "rank": rank,
+        "name": a.get("displayName"),
+        "short_name": a.get("shortName"),
+        "jersey": a.get("jersey"),
+        "team": team.get("displayName"),
+        "team_abbr": team.get("abbreviation"),
+        "team_logo": logo,
+        "value": int(leader.get("value") or 0),
+        "matches": matches,
+    }
+
+
+async def scorers(limit: int = 20) -> dict[str, Any]:
+    """Golden Boot race — top goal scorers + assist leaders. ESPN's free
+    feed has no outright/futures odds, so this is stats only. Cached 2 min."""
+
+    async def fetch() -> dict[str, Any]:
+        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            r = await client.get(f"{BASE}/statistics")
+            r.raise_for_status()
+            body = r.json() or {}
+        by_name: dict[str, list[dict[str, Any]]] = {}
+        for cat in body.get("stats") or []:
+            leaders = cat.get("leaders") or []
+            by_name[cat.get("name")] = [
+                _scorer_row(i + 1, ld) for i, ld in enumerate(leaders[:limit])
+            ]
+        return {
+            "goals": by_name.get("goalsLeaders", []),
+            "assists": by_name.get("assistsLeaders", []),
+        }
+
+    return await cache.aget_or_set(f"worldcup:scorers:{limit}", fetch, ttl_seconds=120)
+
+
 # Match-stat fields we surface, in display order. (espn_name, label, suffix).
 # wonCorners is the per-team corner count the user asked for.
 _STAT_SPECS: list[tuple[str, str, str]] = [

@@ -42,3 +42,11 @@ async def bracket() -> dict[str, Any]:
         return await worldcup.bracket()
     except Exception as e:
         return {"rounds": [], "warning": provider_error("ESPN", e)}
+
+
+@router.get("/scorers")
+async def scorers() -> dict[str, Any]:
+    try:
+        return await worldcup.scorers()
+    except Exception as e:
+        return {"goals": [], "assists": [], "warning": provider_error("ESPN", e)}
