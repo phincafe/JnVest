@@ -647,6 +647,56 @@ export type PriceAlert = {
   dismissed_at: string | null;
 };
 
+// --- World Cup -------------------------------------------------------------
+export type WcCompetitor = {
+  id: string | null;
+  name: string | null;
+  abbr: string | null;
+  logo: string | null;
+  score: number | null;
+  winner: boolean;
+  home_away: "home" | "away" | null;
+};
+
+export type WcEvent = {
+  id: string | null;
+  date: string | null;
+  state: "pre" | "in" | "post" | null;
+  status_detail: string | null;
+  clock: string | null;
+  completed: boolean;
+  venue: string | null;
+  group: string | null;
+  home: WcCompetitor | null;
+  away: WcCompetitor | null;
+};
+
+export type WcScoreboard = {
+  season: string | null;
+  events: WcEvent[];
+  live_count: number;
+  warning?: string;
+};
+
+export type WcStandingRow = {
+  id: string | null;
+  name: string | null;
+  abbr: string | null;
+  logo: string | null;
+  rank: number | null;
+  played: number | null;
+  wins: number | null;
+  draws: number | null;
+  losses: number | null;
+  gf: number | null;
+  ga: number | null;
+  gd: number | null;
+  points: number | null;
+};
+
+export type WcGroup = { name: string | null; teams: WcStandingRow[] };
+export type WcStandings = { groups: WcGroup[]; warning?: string };
+
 export type EquityPoint = {
   date: string; // YYYY-MM-DD
   equity: number;

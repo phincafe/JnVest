@@ -26,6 +26,7 @@ from .routers import (
     stock,
     theme_watch,
     watchlist,
+    worldcup,
 )
 from .services import alerts_runner, streamer
 from .services.bot import runner as bot_runner
@@ -244,6 +245,7 @@ app.include_router(buy_watch.router, prefix="/api")
 app.include_router(theme_watch.router, prefix="/api")
 app.include_router(bot.router, prefix="/api")
 app.include_router(alerts.router, prefix="/api")
+app.include_router(worldcup.router, prefix="/api")
 
 
 @app.websocket("/api/ws")
