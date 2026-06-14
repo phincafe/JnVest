@@ -146,3 +146,147 @@ async def standings() -> dict[str, Any]:
         return {"groups": groups}
 
     return await cache.aget_or_set("worldcup:standings", fetch, ttl_seconds=300)
+
+
+# Match-stat fields we surface, in display order. (espn_name, label, suffix).
+# wonCorners is the per-team corner count the user asked for.
+_STAT_SPECS: list[tuple[str, str, str]] = [
+    ("possessionPct", "Possession", "%"),
+    ("totalShots", "Shots", ""),
+    ("shotsOnTarget", "Shots on target", ""),
+    ("wonCorners", "Corners", ""),
+    ("foulsCommitted", "Fouls", ""),
+    ("yellowCards", "Yellow cards", ""),
+    ("redCards", "Red cards", ""),
+    ("offsides", "Offsides", ""),
+    ("saves", "Saves", ""),
+    ("totalPasses", "Passes", ""),
+    ("passPct", "Pass accuracy", "%"),
+]
+
+
+def _team_stat_map(team_box: dict[str, Any]) -> dict[str, str]:
+    """name -> displayValue for one team's boxscore statistics."""
+    return {
+        s.get("name"): s.get("displayValue")
+        for s in (team_box.get("statistics") or [])
+        if s.get("name")
+    }
+
+
+def _header_side(competitors: list[dict[str, Any]], home_away: str) -> dict[str, Any] | None:
+    c = next((x for x in competitors if x.get("homeAway") == home_away), None)
+    if c is None:
+        return None
+    team = c.get("team") or {}
+    return {
+        "id": team.get("id"),
+        "name": team.get("displayName") or team.get("name"),
+        "abbr": team.get("abbreviation"),
+        "logo": (
+            (team.get("logos") or [{}])[0].get("href") if team.get("logos") else team.get("logo")
+        ),
+        "score": _num(c.get("score")),
+        "winner": bool(c.get("winner")),
+    }
+
+
+def _odds(summary: dict[str, Any]) -> dict[str, Any] | None:
+    pc = (summary.get("pickcenter") or [None])[0]
+    if not pc:
+        return None
+    ml = pc.get("moneyline") or {}
+
+    def side(name: str) -> str | None:
+        o = ml.get(name) or {}
+        node = o.get("close") or o.get("open") or {}
+        return node.get("odds")
+
+    moneyline = {"home": side("home"), "draw": side("draw"), "away": side("away")}
+    if not any(moneyline.values()):
+        moneyline = None  # type: ignore[assignment]
+    return {
+        "provider": (pc.get("provider") or {}).get("name"),
+        "details": pc.get("details"),
+        "over_under": pc.get("overUnder"),
+        "spread": pc.get("spread"),
+        "moneyline": moneyline,
+    }
+
+
+def _key_events(summary: dict[str, Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for e in summary.get("keyEvents") or []:
+        ttype = (e.get("type") or {}).get("text") or ""
+        low = ttype.lower()
+        if not ("goal" in low or "card" in low or "penalty" in low):
+            continue
+        team = e.get("team") or {}
+        out.append(
+            {
+                "clock": (e.get("clock") or {}).get("displayValue"),
+                "type": ttype,
+                "text": e.get("text"),
+                "team_abbr": team.get("abbreviation"),
+            }
+        )
+    out.reverse()  # latest first
+    return out
+
+
+async def match(event_id: str) -> dict[str, Any]:
+    """Full match detail: live team stats (corners, possession, shots, …),
+    betting odds, and goal/card events. Cached 15s for live polling."""
+
+    async def fetch() -> dict[str, Any]:
+        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            r = await client.get(f"{BASE}/summary", params={"event": event_id})
+            r.raise_for_status()
+            s = r.json() or {}
+
+        header = s.get("header") or {}
+        comp = (header.get("competitions") or [{}])[0]
+        competitors = comp.get("competitors") or []
+        status = (comp.get("status") or {}).get("type") or {}
+        home = _header_side(competitors, "home")
+        away = _header_side(competitors, "away")
+
+        # Boxscore teams are ordered [away, home] or [home, away]; match by id.
+        teams = (s.get("boxscore") or {}).get("teams") or []
+        stat_by_id: dict[str, dict[str, str]] = {}
+        for t in teams:
+            tid = (t.get("team") or {}).get("id")
+            if tid:
+                stat_by_id[tid] = _team_stat_map(t)
+        home_stats = stat_by_id.get((home or {}).get("id"), {})
+        away_stats = stat_by_id.get((away or {}).get("id"), {})
+
+        stats = []
+        for name, label, suffix in _STAT_SPECS:
+            hv, av = home_stats.get(name), away_stats.get(name)
+            if hv is None and av is None:
+                continue
+            stats.append(
+                {
+                    "label": label,
+                    "suffix": suffix,
+                    "home": hv,
+                    "away": av,
+                    "home_num": _num((hv or "").replace("%", "")),
+                    "away_num": _num((av or "").replace("%", "")),
+                }
+            )
+
+        return {
+            "id": event_id,
+            "state": status.get("state"),
+            "status_detail": status.get("shortDetail") or status.get("detail"),
+            "venue": (comp.get("venue") or {}).get("fullName"),
+            "home": home,
+            "away": away,
+            "stats": stats,
+            "odds": _odds(s),
+            "events": _key_events(s),
+        }
+
+    return await cache.aget_or_set(f"worldcup:match:{event_id}", fetch, ttl_seconds=15)

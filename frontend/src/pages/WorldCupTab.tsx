@@ -9,11 +9,14 @@ import type {
   WcStandings,
   WcStandingRow,
 } from "../api/types";
+import { useState } from "react";
 import { Skeleton } from "../components/Skeleton";
 import { UpdatedAgo } from "../components/UpdatedAgo";
+import { WorldCupMatchModal } from "../components/WorldCupMatchModal";
 import { useCachedFetch } from "../hooks/useCachedFetch";
 
 export default function WorldCupTab({ refreshNonce }: { refreshNonce: number }) {
+  const [openMatchId, setOpenMatchId] = useState<string | null>(null);
   const sb = useCachedFetch<WcScoreboard>(
     "worldcup:scoreboard",
     () => api.get("/worldcup/scoreboard"),
@@ -28,6 +31,10 @@ export default function WorldCupTab({ refreshNonce }: { refreshNonce: number }) 
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-4">
+      <WorldCupMatchModal
+        eventId={openMatchId}
+        onClose={() => setOpenMatchId(null)}
+      />
       <section className="space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="flex items-center gap-2 text-lg font-semibold">
@@ -56,7 +63,11 @@ export default function WorldCupTab({ refreshNonce }: { refreshNonce: number }) 
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {sb.data.events.map((e) => (
-              <MatchCard key={e.id} ev={e} />
+              <MatchCard
+                key={e.id}
+                ev={e}
+                onOpen={() => e.id && setOpenMatchId(e.id)}
+              />
             ))}
           </div>
         )}
@@ -115,11 +126,14 @@ function statusBadge(ev: WcEvent) {
   );
 }
 
-function MatchCard({ ev }: { ev: WcEvent }) {
+function MatchCard({ ev, onOpen }: { ev: WcEvent; onOpen: () => void }) {
   const live = ev.state === "in";
   return (
-    <div
-      className={`rounded-xl border bg-(--color-panel) p-3 ${
+    <button
+      type="button"
+      onClick={onOpen}
+      title="Tap for live stats, corners & odds"
+      className={`w-full rounded-xl border bg-(--color-panel) p-3 text-left transition-colors hover:bg-(--color-panel-2) ${
         live ? "border-(--color-down)/50" : "border-(--color-border)"
       }`}
     >
@@ -141,7 +155,7 @@ function MatchCard({ ev }: { ev: WcEvent }) {
         live={live}
         winner={ev.state === "post" && !!ev.away?.winner}
       />
-    </div>
+    </button>
   );
 }
 
