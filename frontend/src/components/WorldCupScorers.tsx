@@ -3,7 +3,7 @@
  * outright/golden-boot futures odds, so there are no betting lines here
  * (per-match moneyline lives in the match-detail modal). */
 import { api } from "../api/client";
-import type { WcScorer, WcScorers } from "../api/types";
+import type { WcScorer, WcScorers, WcTitleOdds } from "../api/types";
 import { useCachedFetch } from "../hooks/useCachedFetch";
 import { Skeleton } from "./Skeleton";
 import { UpdatedAgo } from "./UpdatedAgo";
@@ -23,10 +23,9 @@ export function WorldCupScorers({ refreshNonce }: { refreshNonce: number }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <p className="text-[11px] text-(--color-text-dim)">
-          Live tournament leaders. ESPN's free feed has no golden-boot or
-          winner odds — per-match odds are in each match's detail view.
+          Live tournament leaders + title odds.
         </p>
         <UpdatedAgo fetchedAt={fetchedAt} />
       </div>
@@ -44,6 +43,50 @@ export function WorldCupScorers({ refreshNonce }: { refreshNonce: number }) {
           emptyHint="No assists recorded yet."
         />
       </div>
+      <TitleOddsCard refreshNonce={refreshNonce} />
+    </div>
+  );
+}
+
+function TitleOddsCard({ refreshNonce }: { refreshNonce: number }) {
+  const { data } = useCachedFetch<WcTitleOdds>(
+    "worldcup:title-odds",
+    () => api.get("/worldcup/title-odds"),
+    { refreshMs: 30 * 60_000, staleAfterMs: 20 * 60_000 },
+  );
+  void refreshNonce;
+
+  if (!data) return <Skeleton className="h-32 w-full" />;
+  const teams = data.teams ?? [];
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-(--color-border) bg-(--color-panel)">
+      <div className="flex items-center justify-between border-b border-(--color-border) px-3 py-2">
+        <span className="text-xs font-semibold">To win the World Cup</span>
+        {data.provider && (
+          <span className="text-[10px] text-(--color-text-dim)">{data.provider}</span>
+        )}
+      </div>
+      {teams.length === 0 ? (
+        <p className="px-3 py-5 text-center text-xs text-(--color-text-dim)">
+          Title odds need an Odds API key (set ODDS_API_KEY), or the monthly
+          free quota is spent.
+        </p>
+      ) : (
+        <ul className="grid grid-cols-2 gap-x-4 px-3 py-2 sm:grid-cols-3">
+          {teams.map((t, i) => (
+            <li
+              key={t.team ?? i}
+              className="flex items-center justify-between gap-2 border-b border-(--color-border)/30 py-1 text-sm last:border-0"
+            >
+              <span className="truncate">{t.team ?? "—"}</span>
+              <span className="shrink-0 font-semibold tabular-nums text-(--color-up)">
+                {t.odds ?? "—"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

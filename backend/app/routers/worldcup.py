@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from ..services import worldcup
+from ..services import oddsapi, worldcup
 from ..services.errors import provider_error
 
 router = APIRouter(prefix="/worldcup", tags=["worldcup"])
@@ -50,3 +50,13 @@ async def scorers() -> dict[str, Any]:
         return await worldcup.scorers()
     except Exception as e:
         return {"goals": [], "assists": [], "warning": provider_error("ESPN", e)}
+
+
+@router.get("/title-odds")
+async def title_odds() -> dict[str, Any]:
+    """Tournament-winner outright odds (The Odds API). Empty when no key /
+    quota — the UI shows a 'configure a key' hint in that case."""
+    try:
+        return await oddsapi.outright_winner()
+    except Exception as e:
+        return {"teams": [], "provider": None, "warning": provider_error("Odds API", e)}

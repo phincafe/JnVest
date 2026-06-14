@@ -744,6 +744,15 @@ export type WcOdds = {
   moneyline: { home: string | null; draw: string | null; away: string | null } | null;
   /** True when the line shown is the live in-play price (vs pre-match). */
   is_live?: boolean;
+  /** True when the in-play line is ESPN's lagged feed (not a real-time book). */
+  delayed?: boolean;
+};
+
+export type WcTitleOddsTeam = { team: string | null; odds: string | null };
+export type WcTitleOdds = {
+  provider: string | null;
+  teams: WcTitleOddsTeam[];
+  warning?: string;
 };
 
 export type WcMatchEvent = {

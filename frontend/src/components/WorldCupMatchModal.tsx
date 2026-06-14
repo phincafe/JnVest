@@ -93,7 +93,9 @@ export function WorldCupMatchModal({
                 <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-wide text-(--color-text-dim)">
                   <span>
                     {data.odds.is_live
-                      ? "In-play odds (moneyline)"
+                      ? data.odds.delayed
+                        ? "In-play odds (moneyline)"
+                        : "Live odds (moneyline)"
                       : "Odds · at kickoff (moneyline)"}
                   </span>
                   <span>{data.odds.provider ?? ""}</span>
@@ -111,7 +113,7 @@ export function WorldCupMatchModal({
                     {data.odds.details && <span>Spread {data.odds.details}</span>}
                   </div>
                 )}
-                {data.odds.is_live && (
+                {data.odds.is_live && data.odds.delayed && (
                   <p className="mt-1.5 text-center text-[9px] text-(--color-text-dim)/60">
                     ESPN in-play line — can be delayed several minutes vs
                     sportsbooks
