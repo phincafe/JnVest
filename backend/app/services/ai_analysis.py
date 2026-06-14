@@ -29,7 +29,7 @@ from .errors import provider_error
 _TTL_SECONDS = 1800
 # Generous headroom: adaptive thinking tokens count against max_tokens, and a
 # truncated response would fail JSON parsing. The brief itself is small.
-_MAX_TOKENS = 4000
+_MAX_TOKENS = 6000
 
 _SYSTEM = """You are an expert football (soccer) analyst helping a bettor form a quick, \
 decision-useful read on a 2026 FIFA World Cup match. You are given structured live data: \
@@ -216,7 +216,8 @@ async def analyze(event_id: str, detail: dict[str, Any]) -> dict[str, Any]:
     cache_key = f"worldcup:analysis:{event_id}:{_state_token(detail)}"
 
     async def fetch() -> dict[str, Any]:
-        from anthropic import AsyncAnthropic  # lazy: never block app boot
+        # lazy: never block app boot
+        from anthropic import AsyncAnthropic, BadRequestError
 
         client = AsyncAnthropic(api_key=settings.anthropic_api_key)
         # Empty env value (var created but left blank) → fall back to the default.
@@ -226,17 +227,33 @@ async def analyze(event_id: str, detail: dict[str, Any]) -> dict[str, Any]:
             f"{_build_context(detail)}\n\n"
             "Analyze both teams and give me a prediction lean to help me bet."
         )
-        resp = await client.messages.create(
-            model=model,
-            max_tokens=_MAX_TOKENS,
-            thinking={"type": "adaptive"},
-            system=[{"type": "text", "text": _SYSTEM, "cache_control": {"type": "ephemeral"}}],
-            output_config={
-                "effort": "medium",
-                "format": {"type": "json_schema", "schema": _SCHEMA},
-            },
-            messages=[{"role": "user", "content": context}],
-        )
+        system = [{"type": "text", "text": _SYSTEM, "cache_control": {"type": "ephemeral"}}]
+        fmt = {"type": "json_schema", "schema": _SCHEMA}
+
+        async def _call(thinking: bool):
+            kwargs: dict[str, Any] = {
+                "model": model,
+                "max_tokens": _MAX_TOKENS,
+                "system": system,
+                "messages": [{"role": "user", "content": context}],
+            }
+            # Adaptive thinking + effort improve the reasoning but are rejected
+            # by cheaper models (Haiku 4.5 → 400 "adaptive thinking is not
+            # supported"). Try with them; on a 400 the caller retries without,
+            # so any model the owner sets in ANTHROPIC_MODEL works (and new
+            # models that don't support these params degrade gracefully).
+            if thinking:
+                kwargs["thinking"] = {"type": "adaptive"}
+                kwargs["output_config"] = {"effort": "medium", "format": fmt}
+            else:
+                kwargs["output_config"] = {"format": fmt}
+            return await client.messages.create(**kwargs)
+
+        try:
+            resp = await _call(thinking=True)
+        except BadRequestError:
+            resp = await _call(thinking=False)
+
         import json
 
         text = next((b.text for b in resp.content if b.type == "text"), "")
@@ -254,17 +271,4 @@ async def analyze(event_id: str, detail: dict[str, Any]) -> dict[str, Any]:
     try:
         return await cache.aget_or_set(cache_key, fetch, ttl_seconds=_TTL_SECONDS)
     except Exception as e:
-        import anthropic as _a
-
-        # TEMP diagnostic: surface the real failure so we can pinpoint it in
-        # production. Safe — the Anthropic key rides in a header, not in the
-        # exception string. Remove once the root cause is fixed.
-        return {
-            "available": False,
-            "warning": provider_error("Claude", e),
-            "debug": (
-                f"{type(e).__name__}: {str(e)[:280]} | "
-                f"sdk={getattr(_a, '__version__', '?')} "
-                f"model={settings.anthropic_model!r}"
-            ),
-        }
+        return {"available": False, "warning": provider_error("Claude", e)}
