@@ -91,7 +91,11 @@ export function WorldCupMatchModal({
             {data.odds?.moneyline && (
               <div className="mt-4 rounded-lg border border-(--color-border) bg-(--color-panel-2)/40 p-3">
                 <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-wide text-(--color-text-dim)">
-                  <span>Odds (moneyline)</span>
+                  <span>
+                    {data.odds.is_live
+                      ? "Live odds (moneyline)"
+                      : "Odds · at kickoff (moneyline)"}
+                  </span>
                   <span>{data.odds.provider ?? ""}</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-center">
