@@ -81,9 +81,17 @@ export function WorldCupMatchModal({
               </div>
               <SideHead side={data.away} align="right" />
             </div>
-            {data.venue && (
-              <p className="mt-1 text-center text-[10px] text-(--color-text-dim)">
-                {data.venue}
+            {(data.venue || data.weather) && (
+              <p className="mt-1 flex flex-wrap items-center justify-center gap-x-2 text-center text-[10px] text-(--color-text-dim)">
+                {data.venue && <span>{data.venue}</span>}
+                {data.weather && (
+                  <span className={data.weather.hot ? "text-yellow-300" : ""}>
+                    {data.weather.hot ? "🔥 " : "· "}
+                    {data.weather.temp_f}°F · {data.weather.desc} · wind{" "}
+                    {data.weather.wind_kmh} km/h
+                    {data.weather.hot ? " (heat: slower tempo, late fatigue)" : ""}
+                  </span>
+                )}
               </p>
             )}
 
@@ -101,9 +109,24 @@ export function WorldCupMatchModal({
                   <span>{data.odds.provider ?? ""}</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-center">
-                  <OddsCell label={data.home?.abbr ?? "Home"} value={data.odds.moneyline.home} />
-                  <OddsCell label="Draw" value={data.odds.moneyline.draw} />
-                  <OddsCell label={data.away?.abbr ?? "Away"} value={data.odds.moneyline.away} />
+                  <OddsCell
+                    label={data.home?.abbr ?? "Home"}
+                    value={data.odds.moneyline.home}
+                    move={data.odds.movement?.home}
+                    from={data.odds.kickoff?.home}
+                  />
+                  <OddsCell
+                    label="Draw"
+                    value={data.odds.moneyline.draw}
+                    move={data.odds.movement?.draw}
+                    from={data.odds.kickoff?.draw}
+                  />
+                  <OddsCell
+                    label={data.away?.abbr ?? "Away"}
+                    value={data.odds.moneyline.away}
+                    move={data.odds.movement?.away}
+                    from={data.odds.kickoff?.away}
+                  />
                 </div>
                 {(data.odds.over_under != null || data.odds.details) && (
                   <div className="mt-2 flex justify-center gap-4 text-[11px] text-(--color-text-dim)">
@@ -178,6 +201,11 @@ function SideHead({
   side: WcMatchSide | null | undefined;
   align: "left" | "right";
 }) {
+  const pos = side?.group_pos;
+  const posText =
+    pos && pos.rank != null
+      ? `${ordinal(pos.rank)} · ${pos.points ?? 0} pt${pos.points === 1 ? "" : "s"}`
+      : null;
   return (
     <div
       className={`flex min-w-0 flex-1 items-center gap-2 ${
@@ -189,16 +217,62 @@ function SideHead({
       ) : (
         <span className="h-8 w-8 shrink-0" />
       )}
-      <span className="truncate text-sm font-semibold">{side?.name ?? "TBD"}</span>
+      <div className="min-w-0">
+        <div className="truncate text-sm font-semibold">{side?.name ?? "TBD"}</div>
+        {posText && (
+          <div
+            className="truncate text-[10px] text-(--color-text-dim)"
+            title="Current group position"
+          >
+            {posText}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function OddsCell({ label, value }: { label: string; value: string | null }) {
+function ordinal(n: number): string {
+  const v = Math.round(n);
+  const s = ["th", "st", "nd", "rd"];
+  const r = v % 100;
+  return v + (s[(r - 20) % 10] || s[r] || s[0]);
+}
+
+function OddsCell({
+  label,
+  value,
+  move,
+  from,
+}: {
+  label: string;
+  value: string | null;
+  move?: "shorten" | "drift" | "flat";
+  from?: string | null;
+}) {
+  // "shorten" = price dropped since kickoff → market rates it MORE likely.
+  const arrow = move === "shorten" ? "▼" : move === "drift" ? "▲" : null;
+  const arrowCls =
+    move === "shorten"
+      ? "text-(--color-up)"
+      : move === "drift"
+        ? "text-(--color-down)"
+        : "";
   return (
     <div className="rounded-md bg-(--color-panel) px-2 py-1.5">
       <div className="text-[10px] text-(--color-text-dim)">{label}</div>
-      <div className="text-sm font-semibold tabular-nums">{value ?? "—"}</div>
+      <div className="flex items-center justify-center gap-1 text-sm font-semibold tabular-nums">
+        {value ?? "—"}
+        {arrow && <span className={`text-[10px] ${arrowCls}`}>{arrow}</span>}
+      </div>
+      {from && from !== value && (
+        <div
+          className="text-[9px] text-(--color-text-dim)/60 tabular-nums"
+          title="Kickoff price"
+        >
+          KO {from}
+        </div>
+      )}
     </div>
   );
 }

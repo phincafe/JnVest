@@ -718,6 +718,13 @@ export type WcScorers = {
   warning?: string;
 };
 
+export type WcGroupPos = {
+  group: string | null;
+  rank: number | null;
+  points: number | null;
+  played: number | null;
+};
+
 export type WcMatchSide = {
   id: string | null;
   name: string | null;
@@ -725,7 +732,19 @@ export type WcMatchSide = {
   logo: string | null;
   score: number | null;
   winner: boolean;
+  /** Current group rank/points (group stage only). */
+  group_pos?: WcGroupPos | null;
 };
+
+export type WcWeather = {
+  temp_c: number;
+  temp_f: number;
+  desc: string;
+  wind_kmh: number;
+  hot: boolean;
+};
+
+type WcMove = "shorten" | "drift" | "flat";
 
 export type WcMatchStat = {
   label: string;
@@ -746,6 +765,10 @@ export type WcOdds = {
   is_live?: boolean;
   /** True when the in-play line is ESPN's lagged feed (not a real-time book). */
   delayed?: boolean;
+  /** Direction each outcome's price has moved since kickoff. */
+  movement?: { home?: WcMove; draw?: WcMove; away?: WcMove };
+  /** Kickoff moneyline, for the movement reference. */
+  kickoff?: { home: string | null; draw: string | null; away: string | null } | null;
 };
 
 export type WcTitleOddsTeam = { team: string | null; odds: string | null };
@@ -771,6 +794,7 @@ export type WcMatchDetail = {
   away?: WcMatchSide | null;
   stats?: WcMatchStat[];
   odds?: WcOdds | null;
+  weather?: WcWeather | null;
   events?: WcMatchEvent[];
   warning?: string;
 };
