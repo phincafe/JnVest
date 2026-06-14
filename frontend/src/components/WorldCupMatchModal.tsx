@@ -427,6 +427,33 @@ function ClaudeAnalysis({ eventId }: { eventId: string }) {
         </div>
       )}
 
+      {data.markets && (
+        <div className="mt-3">
+          <div className="mb-1 text-[10px] uppercase tracking-wide text-(--color-text-dim)">
+            Betting markets
+          </div>
+          <div className="space-y-1.5">
+            <MarketRow
+              label="Total goals"
+              tag={
+                data.markets.total_goals.line &&
+                data.markets.total_goals.line.toLowerCase() !== "n/a"
+                  ? `O/U ${data.markets.total_goals.line}`
+                  : "O/U"
+              }
+              lean={data.markets.total_goals.lean}
+              note={data.markets.total_goals.note}
+            />
+            <MarketRow
+              label="Corners"
+              tag={`proj. ${data.markets.corners.projected_total}`}
+              lean={data.markets.corners.lean}
+              note={data.markets.corners.note}
+            />
+          </div>
+        </div>
+      )}
+
       {data.watch && (
         <p className="mt-3 rounded-md bg-(--color-panel-2)/50 px-2 py-1.5 text-xs">
           <span className="font-semibold">Watch:</span> {data.watch}
@@ -452,6 +479,37 @@ function confCls(c: "low" | "medium" | "high"): string {
   if (c === "high") return "bg-(--color-up)/15 text-(--color-up)";
   if (c === "low") return "bg-(--color-text-dim)/15 text-(--color-text-dim)";
   return "bg-yellow-500/15 text-yellow-400";
+}
+
+function MarketRow({
+  label,
+  tag,
+  lean,
+  note,
+}: {
+  label: string;
+  tag: string;
+  lean: "over" | "under" | "no edge";
+  note: string;
+}) {
+  const leanCls =
+    lean === "no edge"
+      ? "bg-(--color-text-dim)/15 text-(--color-text-dim)"
+      : "bg-(--color-accent)/15 text-(--color-accent)";
+  return (
+    <div className="rounded-md bg-(--color-panel)/60 px-2 py-1.5">
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-semibold">{label}</span>
+        <span className="text-[10px] tabular-nums text-(--color-text-dim)">{tag}</span>
+        <span
+          className={`ml-auto rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${leanCls}`}
+        >
+          {lean}
+        </span>
+      </div>
+      {note && <p className="mt-0.5 text-[11px] text-(--color-text-dim)">{note}</p>}
+    </div>
+  );
 }
 
 function TeamBrief({ name, brief }: { name: string; brief?: WcTeamBrief }) {

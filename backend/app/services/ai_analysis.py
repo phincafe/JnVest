@@ -50,10 +50,23 @@ player names, injuries, suspensions, or results that are not present in the data
 data is thin (e.g. a pre-match game with no stats), say so and rate the read low-confidence \
 rather than fabricating specifics.
 
+Also give a read on two secondary betting markets:
+- markets.total_goals: lean over or under the posted goals line (the "Total goals O/U" in \
+the data). If a live match, factor the current score, minute, and remaining time into the \
+pace. If no line is given, estimate the expected total and lean relative to a 2.5 line. Put \
+the line you reasoned against in `line` (or "n/a"), and explain the pace logic in `note`.
+- markets.corners: a corners total is NOT in the data, so estimate the projected full-match \
+total corners from both teams' attacking style and (if live) the current corner count + \
+minute. Put a number or tight range in `projected_total`, set `lean` to over/under a typical \
+World Cup line (~9.5-10.5) or "no edge", and justify in `note`. Be explicit this is an \
+estimate, not a posted line.
+For either market, use lean "no edge" when the data doesn't support a confident side.
+
 Keep each team summary to 2-3 sentences. strengths and risks: 2-3 short phrases each. \
 key_factors: 2-4 punchy bullets that actually drive your lean. watch: one sentence on the \
 single most informative thing to watch to update the read in-play. lean is your pick for \
-the most likely result (home/away/draw), or "toss-up" when it is genuinely too close."""
+the most likely result (home/away/draw), or "toss-up" when it is genuinely too close. Keep \
+every note to one sentence."""
 
 _TEAM_BRIEF = {
     "type": "object",
@@ -66,6 +79,35 @@ _TEAM_BRIEF = {
     "additionalProperties": False,
 }
 
+_GOALS_MARKET = {
+    "type": "object",
+    "properties": {
+        "line": {"type": "string"},  # the O/U line reasoned against, e.g. "2.5" or "n/a"
+        "lean": {"type": "string", "enum": ["over", "under", "no edge"]},
+        "note": {"type": "string"},
+    },
+    "required": ["line", "lean", "note"],
+    "additionalProperties": False,
+}
+
+_CORNERS_MARKET = {
+    "type": "object",
+    "properties": {
+        "projected_total": {"type": "string"},  # estimate, e.g. "9-11"
+        "lean": {"type": "string", "enum": ["over", "under", "no edge"]},
+        "note": {"type": "string"},
+    },
+    "required": ["projected_total", "lean", "note"],
+    "additionalProperties": False,
+}
+
+_MARKETS = {
+    "type": "object",
+    "properties": {"total_goals": _GOALS_MARKET, "corners": _CORNERS_MARKET},
+    "required": ["total_goals", "corners"],
+    "additionalProperties": False,
+}
+
 _SCHEMA = {
     "type": "object",
     "properties": {
@@ -75,9 +117,19 @@ _SCHEMA = {
         "home": _TEAM_BRIEF,
         "away": _TEAM_BRIEF,
         "key_factors": {"type": "array", "items": {"type": "string"}},
+        "markets": _MARKETS,
         "watch": {"type": "string"},
     },
-    "required": ["headline", "lean", "confidence", "home", "away", "key_factors", "watch"],
+    "required": [
+        "headline",
+        "lean",
+        "confidence",
+        "home",
+        "away",
+        "key_factors",
+        "markets",
+        "watch",
+    ],
     "additionalProperties": False,
 }
 
@@ -170,6 +222,21 @@ def _build_context(detail: dict[str, Any]) -> str:
                 f"  - {s.get('label')}: {s.get('home') or '0'}{suf} vs "
                 f"{s.get('away') or '0'}{suf}"
             )
+
+    # Running totals to anchor the goals-pace and corners-pace estimates.
+    if detail.get("state") == "in":
+        hs, as_ = (home or {}).get("score"), (away or {}).get("score")
+        pace = []
+        if detail.get("status_detail"):
+            pace.append(f"{detail['status_detail']} elapsed")
+        if hs is not None and as_ is not None:
+            pace.append(f"goals so far {int(hs + as_)}")
+        corners = next((s for s in stats if s.get("label") == "Corners"), None)
+        if corners:
+            ct = (corners.get("home_num") or 0) + (corners.get("away_num") or 0)
+            pace.append(f"corners so far {int(ct)}")
+        if pace:
+            lines.append("Pace: " + ", ".join(pace) + " (extrapolate to full-time)")
 
     events = detail.get("events") or []
     if events:
