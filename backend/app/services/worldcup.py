@@ -387,6 +387,124 @@ async def _core_odds(client: httpx.AsyncClient, event_id: str) -> dict[str, Any]
     }
 
 
+def _implied_prob(american: str | None) -> float | None:
+    """American moneyline → implied win probability (0-1), incl. the vig."""
+    if not american:
+        return None
+    try:
+        n = int(str(american).replace("+", ""))
+    except ValueError:
+        return None
+    if n == 0:
+        return None
+    return 100.0 / (n + 100.0) if n > 0 else (-n) / (-n + 100.0)
+
+
+def _movement(live_ml: dict[str, Any] | None, kickoff_ml: dict[str, Any] | None) -> dict[str, str]:
+    """Per-outcome odds drift since kickoff: 'shorten' (more likely now),
+    'drift' (less likely), or 'flat'. The DIRECTION aggregates sharp money —
+    a strong in-play signal on top of the raw price."""
+    out: dict[str, str] = {}
+    if not (live_ml and kickoff_ml):
+        return out
+    for k in ("home", "draw", "away"):
+        pl, pk = _implied_prob(live_ml.get(k)), _implied_prob(kickoff_ml.get(k))
+        if pl is None or pk is None:
+            continue
+        diff = pl - pk
+        out[k] = "shorten" if diff > 0.03 else "drift" if diff < -0.03 else "flat"
+    return out
+
+
+# WMO weather codes → short label (Open-Meteo). Enough buckets to read at a glance.
+_WMO: dict[int, str] = {
+    0: "Clear",
+    1: "Mostly clear",
+    2: "Partly cloudy",
+    3: "Cloudy",
+    45: "Fog",
+    48: "Fog",
+    51: "Drizzle",
+    53: "Drizzle",
+    55: "Drizzle",
+    61: "Rain",
+    63: "Rain",
+    65: "Heavy rain",
+    71: "Snow",
+    80: "Showers",
+    81: "Showers",
+    82: "Heavy showers",
+    95: "Thunderstorm",
+    96: "Thunderstorm",
+    99: "Thunderstorm",
+}
+
+
+async def _weather(client: httpx.AsyncClient, city: str | None) -> dict[str, Any] | None:
+    """Current conditions at the venue city via Open-Meteo (free, no key).
+    Heat is genuinely predictive at the 2026 US summer World Cup — afternoon
+    games in TX/FL/Monterrey run 35C+, slowing tempo and late goals."""
+    if not city:
+        return None
+    name = city.split(",")[0].strip()
+
+    async def fetch() -> dict[str, Any] | None:
+        try:
+            g = await client.get(
+                "https://geocoding-api.open-meteo.com/v1/search",
+                params={"name": name, "count": 1},
+            )
+            results = (g.json() or {}).get("results") or []
+            if not results:
+                return None
+            lat, lon = results[0].get("latitude"), results[0].get("longitude")
+            w = await client.get(
+                "https://api.open-meteo.com/v1/forecast",
+                params={
+                    "latitude": lat,
+                    "longitude": lon,
+                    "current": "temperature_2m,weather_code,wind_speed_10m",
+                },
+            )
+            cur = (w.json() or {}).get("current") or {}
+        except Exception:
+            return None
+        temp_c = cur.get("temperature_2m")
+        if temp_c is None:
+            return None
+        code = int(cur.get("weather_code") or 0)
+        return {
+            "temp_c": round(float(temp_c)),
+            "temp_f": round(float(temp_c) * 9 / 5 + 32),
+            "desc": _WMO.get(code, "—"),
+            "wind_kmh": round(float(cur.get("wind_speed_10m") or 0)),
+            "hot": float(temp_c) >= 30,
+        }
+
+    return await cache.aget_or_set(f"wc-weather:{name}", fetch, ttl_seconds=1800)
+
+
+def _group_position(summary: dict[str, Any], team_id: str | None) -> dict[str, Any] | None:
+    """Team's current group rank/points from the standings embedded in the
+    match summary — the 'what's at stake' context for a group-stage game."""
+    if not team_id:
+        return None
+    groups = (summary.get("standings") or {}).get("groups") or []
+    for g in groups:
+        entries = ((g.get("standings") or {}).get("entries")) or []
+        for e in entries:
+            # In the summary feed the entry's team id sits at e["id"]
+            # (e["team"] is just the display name string).
+            if str(e.get("id")) == str(team_id):
+                return {
+                    "group": g.get("header") or g.get("name"),
+                    "rank": _stat(e, "rank"),
+                    "points": _stat(e, "points"),
+                    "played": _stat(e, "gamesPlayed"),
+                }
+    return None
+
+
 def _key_events(summary: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for e in summary.get("keyEvents") or []:
@@ -419,6 +537,8 @@ async def match(event_id: str) -> dict[str, Any]:
             # Prefer the core API's live in-play line; fall back to the
             # summary's kickoff line when the live provider isn't available.
             core = await _core_odds(client, event_id)
+            city = (((s.get("gameInfo") or {}).get("venue") or {}).get("address") or {}).get("city")
+            weather = await _weather(client, city)
 
         header = s.get("header") or {}
         comp = (header.get("competitions") or [{}])[0]
@@ -462,6 +582,23 @@ async def match(event_id: str) -> dict[str, Any]:
                 }
             )
 
+        # Resolve the displayed odds + attach movement vs the kickoff line.
+        kickoff = _odds(s)
+        live = book_odds or core
+        if live and live.get("moneyline"):
+            live = {
+                **live,
+                "movement": _movement(live["moneyline"], (kickoff or {}).get("moneyline")),
+                "kickoff": (kickoff or {}).get("moneyline"),
+            }
+        odds_final = live or kickoff
+
+        # Game-state context: each side's group position (group stage only).
+        if home:
+            home["group_pos"] = _group_position(s, home.get("id"))
+        if away:
+            away["group_pos"] = _group_position(s, away.get("id"))
+
         return {
             "id": event_id,
             "state": status.get("state"),
@@ -470,7 +607,8 @@ async def match(event_id: str) -> dict[str, Any]:
             "home": home,
             "away": away,
             "stats": stats,
-            "odds": book_odds or core or _odds(s),
+            "odds": odds_final,
+            "weather": weather,
             "events": _key_events(s),
         }
 
