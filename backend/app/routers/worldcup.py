@@ -26,3 +26,11 @@ async def standings() -> dict[str, Any]:
         return await worldcup.standings()
     except Exception as e:
         return {"groups": [], "warning": provider_error("ESPN", e)}
+
+
+@router.get("/match/{event_id}")
+async def match(event_id: str) -> dict[str, Any]:
+    try:
+        return await worldcup.match(event_id)
+    except Exception as e:
+        return {"id": event_id, "warning": provider_error("ESPN", e)}
