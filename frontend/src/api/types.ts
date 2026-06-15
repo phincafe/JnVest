@@ -725,6 +725,12 @@ export type WcGroupPos = {
   played: number | null;
 };
 
+export type WcLineup = {
+  formation?: string | null;
+  starters?: { name?: string | null; pos?: string | null; subbed_out?: boolean }[];
+  subs_in?: { name?: string | null; pos?: string | null }[];
+};
+
 export type WcMatchSide = {
   id: string | null;
   name: string | null;
@@ -734,6 +740,8 @@ export type WcMatchSide = {
   winner: boolean;
   /** Current group rank/points (group stage only). */
   group_pos?: WcGroupPos | null;
+  /** Formation + starting XI, once team news is published. */
+  lineup?: WcLineup | null;
 };
 
 export type WcWeather = {

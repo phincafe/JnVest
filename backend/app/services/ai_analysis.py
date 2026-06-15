@@ -34,8 +34,8 @@ _MAX_TOKENS = 6000
 _SYSTEM = """You are an expert football (soccer) analyst helping a bettor form a quick, \
 decision-useful read on a 2026 FIFA World Cup match. You are given structured live data: \
 the two teams, the score and match state, each side's current group standing, the \
-sportsbook moneyline (and how it has moved since kickoff), venue weather, and live \
-in-match stats.
+sportsbook moneyline (and how it has moved since kickoff), venue weather, starting \
+formations and lineups (when team news is out), and live in-match stats.
 
 Write a tight scouting brief, not an essay. Ground every claim in the data provided plus \
 well-established, durable team-strength priors. The sportsbook moneyline is the market's \
@@ -49,6 +49,13 @@ confirmed lineups, or other recent results — beyond what is in the data. Never
 player names, injuries, suspensions, or results that are not present in the data. When the \
 data is thin (e.g. a pre-match game with no stats), say so and rate the read low-confidence \
 rather than fabricating specifics.
+
+When formations and lineups are provided, weave them into the read: the shape (e.g. a back \
+five sitting deep vs an attacking 4-3-3 / 3-4-3), which recognized key players are starting \
+or absent from the XI, and — in a live match — who has already been substituted off ([off]). \
+Tie shape to the markets: a low-block defensive setup supports under goals / fewer corners, \
+an attack-heavy shape supports over. If lineups are absent (early pre-match before team \
+news), do not invent names — note that team news isn't out yet.
 
 Also give a read on these secondary betting markets:
 - markets.total_goals: lean over or under the posted goals line (the "Total goals O/U" in \
@@ -257,6 +264,28 @@ def _build_context(detail: dict[str, Any]) -> str:
             f"Weather: {wx['temp_f']}°F, {wx.get('desc') or '—'}, "
             f"wind {wx.get('wind_kmh')} km/h{hot}"
         )
+
+    # Formation + starting XI per side (subbed-off starters flagged [off]).
+    for label, side in (("Home", home), ("Away", away)):
+        lu = (side or {}).get("lineup") or {}
+        formation = lu.get("formation")
+        starters = lu.get("starters") or []
+        if not (formation or starters):
+            continue
+        names = []
+        for p in starters:
+            n = p.get("name")
+            if not n:
+                continue
+            tag = f"{n} ({p['pos']})" if p.get("pos") else n
+            if p.get("subbed_out"):
+                tag += " [off]"
+            names.append(tag)
+        head = f"{label} XI — {formation}" if formation else f"{label} XI"
+        lines.append(head + (": " + ", ".join(names) if names else ""))
+        subs = [p.get("name") for p in (lu.get("subs_in") or []) if p.get("name")]
+        if subs:
+            lines.append(f"  {label} subs on: " + ", ".join(subs))
 
     stats = detail.get("stats") or []
     if stats:
