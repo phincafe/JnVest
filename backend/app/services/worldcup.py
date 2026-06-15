@@ -505,6 +505,15 @@ def _group_position(summary: dict[str, Any], team_id: str | None) -> dict[str, A
     return None
 
 
+def _did_sub(v: Any) -> bool:
+    """ESPN encodes sub status as {"didSub": bool} (and not-yet-played matches
+    set it on every player), so a plain truthiness check flags everyone. Read
+    the didSub flag; fall back to truthiness for the occasional bare value."""
+    if isinstance(v, dict):
+        return bool(v.get("didSub"))
+    return bool(v)
+
+
 def _lineup(rosters: list[dict[str, Any]], home_away: str) -> dict[str, Any] | None:
     """One team's formation + starting XI (and subs used) from the summary's
     `rosters`. Only populated once ESPN publishes team news (~1h pre-kickoff);
@@ -523,8 +532,8 @@ def _lineup(rosters: list[dict[str, Any]], home_away: str) -> dict[str, Any] | N
             "abbreviation"
         )
         if p.get("starter"):
-            starters.append({"name": name, "pos": pos, "subbed_out": bool(p.get("subbedOut"))})
-        elif p.get("subbedIn"):
+            starters.append({"name": name, "pos": pos, "subbed_out": _did_sub(p.get("subbedOut"))})
+        elif _did_sub(p.get("subbedIn")):
             subs_in.append({"name": name, "pos": pos})
     if not (r.get("formation") or starters):
         return None
