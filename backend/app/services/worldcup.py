@@ -505,6 +505,32 @@ def _group_position(summary: dict[str, Any], team_id: str | None) -> dict[str, A
     return None
 
 
+def _lineup(rosters: list[dict[str, Any]], home_away: str) -> dict[str, Any] | None:
+    """One team's formation + starting XI (and subs used) from the summary's
+    `rosters`. Only populated once ESPN publishes team news (~1h pre-kickoff);
+    returns None before then so pre-match reads degrade gracefully."""
+    r = next((x for x in rosters if x.get("homeAway") == home_away), None)
+    if not r:
+        return None
+    starters: list[dict[str, Any]] = []
+    subs_in: list[dict[str, Any]] = []
+    for p in r.get("roster") or []:
+        ath = p.get("athlete") or {}
+        name = ath.get("displayName") or ath.get("shortName")
+        if not name:
+            continue
+        pos = (p.get("position") or {}).get("abbreviation") or (ath.get("position") or {}).get(
+            "abbreviation"
+        )
+        if p.get("starter"):
+            starters.append({"name": name, "pos": pos, "subbed_out": bool(p.get("subbedOut"))})
+        elif p.get("subbedIn"):
+            subs_in.append({"name": name, "pos": pos})
+    if not (r.get("formation") or starters):
+        return None
+    return {"formation": r.get("formation"), "starters": starters, "subs_in": subs_in}
+
+
 def _key_events(summary: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for e in summary.get("keyEvents") or []:
@@ -598,6 +624,13 @@ async def match(event_id: str) -> dict[str, Any]:
             home["group_pos"] = _group_position(s, home.get("id"))
         if away:
             away["group_pos"] = _group_position(s, away.get("id"))
+
+        # Formation + starting XI per team (once team news is published).
+        rosters = s.get("rosters") or []
+        if home:
+            home["lineup"] = _lineup(rosters, "home")
+        if away:
+            away["lineup"] = _lineup(rosters, "away")
 
         return {
             "id": event_id,
