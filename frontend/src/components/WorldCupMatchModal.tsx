@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Loader2, RefreshCw, Sparkles, X } from "lucide-react";
 import { api } from "../api/client";
 import type {
+  WcLineup,
   WcMatchAnalysis,
   WcMatchDetail,
   WcMatchSide,
@@ -100,6 +101,9 @@ export function WorldCupMatchModal({
                 )}
               </p>
             )}
+
+            {/* Formations + starting XI (collapsible) */}
+            <Lineups home={data.home} away={data.away} />
 
             {/* Claude prediction brief — on demand */}
             <ClaudeAnalysis eventId={eventId} />
@@ -236,6 +240,14 @@ function SideHead({
             {posText}
           </div>
         )}
+        {side?.lineup?.formation && (
+          <div
+            className="truncate text-[10px] font-semibold text-(--color-accent)"
+            title="Formation"
+          >
+            {side.lineup.formation}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -246,6 +258,73 @@ function ordinal(n: number): string {
   const s = ["th", "st", "nd", "rd"];
   const r = v % 100;
   return v + (s[(r - 20) % 10] || s[r] || s[0]);
+}
+
+/** Collapsible formations + starting XI. Hidden entirely until ESPN publishes
+ * team news (~1h pre-kickoff); collapsed by default to keep the modal tight. */
+function Lineups({
+  home,
+  away,
+}: {
+  home?: WcMatchSide | null;
+  away?: WcMatchSide | null;
+}) {
+  const hl = home?.lineup;
+  const al = away?.lineup;
+  const has = (l?: WcLineup | null) => !!(l && (l.formation || l.starters?.length));
+  if (!has(hl) && !has(al)) return null;
+
+  const chip = (side?: WcMatchSide | null) =>
+    side?.lineup?.formation ? `${side.abbr ?? "?"} ${side.lineup.formation}` : null;
+  const chips = [chip(home), chip(away)].filter(Boolean).join("  ·  ");
+
+  return (
+    <details className="mt-3 overflow-hidden rounded-lg border border-(--color-border) bg-(--color-panel-2)/40">
+      <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2 text-[11px] font-semibold text-(--color-text-dim) marker:content-none">
+        <span>Lineups</span>
+        {chips && <span className="font-semibold text-(--color-accent)">{chips}</span>}
+        <span className="ml-auto text-(--color-text-dim)">▾</span>
+      </summary>
+      <div className="grid grid-cols-2 gap-3 px-3 pb-3">
+        <XIColumn side={home} />
+        <XIColumn side={away} />
+      </div>
+    </details>
+  );
+}
+
+function XIColumn({ side }: { side?: WcMatchSide | null }) {
+  const lu = side?.lineup;
+  if (!lu || !(lu.starters?.length || lu.formation)) {
+    return (
+      <div className="text-[11px] text-(--color-text-dim)">
+        {side?.abbr ?? side?.name ?? "—"}: no lineup
+      </div>
+    );
+  }
+  const subsOn = (lu.subs_in ?? []).map((p) => p.name).filter(Boolean);
+  return (
+    <div className="min-w-0">
+      <div className="mb-1 flex items-center gap-1.5 truncate text-[11px] font-semibold">
+        <span className="truncate">{side?.abbr ?? side?.name}</span>
+        {lu.formation && <span className="text-(--color-accent)">{lu.formation}</span>}
+      </div>
+      <ul className="space-y-0.5">
+        {(lu.starters ?? []).map((p, i) => (
+          <li key={i} className="flex items-baseline gap-1.5 text-[11px]">
+            <span className="w-8 shrink-0 text-(--color-text-dim)">{p.pos ?? ""}</span>
+            <span className={`truncate ${p.subbed_out ? "text-(--color-text-dim) line-through" : ""}`}>
+              {p.name}
+            </span>
+            {p.subbed_out && <span className="shrink-0 text-(--color-down)">↓</span>}
+          </li>
+        ))}
+      </ul>
+      {subsOn.length > 0 && (
+        <div className="mt-1 text-[10px] text-(--color-text-dim)">On: {subsOn.join(", ")}</div>
+      )}
+    </div>
+  );
 }
 
 function OddsCell({
