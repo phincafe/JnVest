@@ -82,10 +82,10 @@ export default function WorldCupTab({ refreshNonce }: { refreshNonce: number }) 
         <WorldCupScorers refreshNonce={refreshNonce} />
       ) : (
         <>
-      <section className="space-y-3">
+      <section className="space-y-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-sm font-medium text-(--color-text-dim)">
-            Today's matches
+            Fixtures · today &amp; tomorrow
           </h2>
           <UpdatedAgo fetchedAt={sb.fetchedAt} />
         </div>
@@ -98,18 +98,39 @@ export default function WorldCupTab({ refreshNonce }: { refreshNonce: number }) 
           </p>
         ) : sb.data.events.length === 0 ? (
           <p className="rounded-md border border-(--color-border) bg-(--color-panel) p-4 text-sm text-(--color-text-dim)">
-            No matches scheduled today. Group stage runs through 27 June; check
+            No matches today or tomorrow. Group stage runs through 27 June; check
             back on a match day.
           </p>
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {sb.data.events.map((e) => (
-              <MatchCard
-                key={e.id}
-                ev={e}
-                onOpen={() => e.id && setOpenMatchId(e.id)}
-              />
-            ))}
+          <div className="space-y-4">
+            {(
+              sb.data.days ?? [
+                { date: "all", label: "Matches", events: sb.data.events },
+              ]
+            )
+              .filter((d) => d.events.length > 0)
+              .map((day) => (
+                <div key={day.date} className="space-y-2">
+                  <div className="flex items-baseline gap-2">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide">
+                      {day.label}
+                    </h3>
+                    <span className="text-[10px] text-(--color-text-dim)">
+                      {day.events.length}{" "}
+                      {day.events.length === 1 ? "match" : "matches"}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {day.events.map((e) => (
+                      <MatchCard
+                        key={e.id}
+                        ev={e}
+                        onOpen={() => e.id && setOpenMatchId(e.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
           </div>
         )}
         <p className="text-[10px] text-(--color-text-dim)/70">
