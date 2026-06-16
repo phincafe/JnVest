@@ -138,6 +138,13 @@ export function clearCacheKey(key: string) {
   notify(key);
 }
 
+/** Read the current cached value for a key without subscribing or fetching.
+ * Returns null if nothing is cached yet. */
+export function peekCache<T>(key: string): T | null {
+  const entry = cache.get(key) as Entry<T> | undefined;
+  return entry?.data ?? null;
+}
+
 /** Update a cached entry in place — useful for optimistic updates that
  * shouldn't trigger a refetch + skeleton flash. */
 export function mutateCache<T>(

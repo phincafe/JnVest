@@ -2,7 +2,7 @@
  * betting odds, and goal/card events. Polls every 20s while open so a live
  * match stays current. Data: ESPN summary endpoint. */
 import { useEffect, useState } from "react";
-import { Loader2, RefreshCw, Sparkles, X } from "lucide-react";
+import { Loader2, RefreshCw, Share2, Sparkles, X } from "lucide-react";
 import { api } from "../api/client";
 import type {
   WcLineup,
@@ -12,7 +12,7 @@ import type {
   WcMatchStat,
   WcTeamBrief,
 } from "../api/types";
-import { useCachedFetch } from "../hooks/useCachedFetch";
+import { peekCache, useCachedFetch } from "../hooks/useCachedFetch";
 import { Skeleton } from "./Skeleton";
 
 export function WorldCupMatchModal({
@@ -28,12 +28,44 @@ export function WorldCupMatchModal({
     { refreshMs: 20_000, staleAfterMs: 10_000 },
   );
 
+  const [exporting, setExporting] = useState(false);
+
   useEffect(() => {
     if (!eventId) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [eventId, onClose]);
+
+  // Render a clean share card (match + Claude brief) to a JPG. Web Share sheet
+  // on mobile (one tap to send a friend); download elsewhere. The card is drawn
+  // on a canvas — no DOM capture — so it never hangs and looks the same
+  // everywhere. Picks up the Claude analysis from cache if it's been run.
+  async function exportImage() {
+    if (!data || data.warning) return;
+    setExporting(true);
+    try {
+      const analysis = peekCache<WcMatchAnalysis>(`worldcup:analysis:${eventId}`);
+      const { drawShareCard } = await import("../lib/wcShareCard");
+      const dataUrl = drawShareCard(data, analysis);
+      const name = `${data.home?.abbr ?? "home"}-${data.away?.abbr ?? "away"}-analysis.jpg`;
+      const file = new File([await (await fetch(dataUrl)).blob()], name, {
+        type: "image/jpeg",
+      });
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: "World Cup match analysis" });
+      } else {
+        const a = document.createElement("a");
+        a.href = dataUrl;
+        a.download = name;
+        a.click();
+      }
+    } catch (e) {
+      if ((e as Error)?.name !== "AbortError") console.error("export failed", e);
+    } finally {
+      setExporting(false);
+    }
+  }
 
   if (!eventId) return null;
   const live = data?.state === "in";
@@ -51,13 +83,30 @@ export function WorldCupMatchModal({
           <span className="text-xs uppercase tracking-wide text-(--color-text-dim)">
             Match detail
           </span>
-          <button
-            onClick={onClose}
-            className="-m-1 rounded p-1 text-(--color-text-dim) hover:text-(--color-text)"
-            aria-label="Close"
-          >
-            <X size={16} />
-          </button>
+          <div className="flex items-center gap-1">
+            {data && !data.warning && (
+              <button
+                onClick={exportImage}
+                disabled={exporting}
+                className="-m-1 rounded p-1 text-(--color-text-dim) hover:text-(--color-text) disabled:opacity-50"
+                aria-label="Share as image"
+                title="Share as image"
+              >
+                {exporting ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Share2 size={15} />
+                )}
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="-m-1 rounded p-1 text-(--color-text-dim) hover:text-(--color-text)"
+              aria-label="Close"
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
         {!data ? (
