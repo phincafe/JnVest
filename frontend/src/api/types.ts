@@ -671,10 +671,18 @@ export type WcEvent = {
   away: WcCompetitor | null;
 };
 
+export type WcScoreboardDay = {
+  date: string; // YYYY-MM-DD (US Eastern matchday)
+  label: string; // "Today" | "Tomorrow" | "Mon Jun 16"
+  events: WcEvent[];
+};
+
 export type WcScoreboard = {
   season: string | null;
   events: WcEvent[];
   live_count: number;
+  /** Today's + tomorrow's matches grouped by day (absent on older backends). */
+  days?: WcScoreboardDay[];
   warning?: string;
 };
 

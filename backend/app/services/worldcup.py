@@ -10,11 +10,28 @@ standings longer (they only change at full-time). Parsing is defensive —
 ESPN's shapes drift, and a missing field must degrade to None, never 500.
 """
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
 
 from . import cache, oddsapi
+
+# US Eastern across the whole 2026 WC window (Jun 11 – Jul 19, all EDT = UTC-4).
+# A fixed offset matches how ESPN buckets match "dates" and avoids a tzdata dep.
+_ET = timezone(timedelta(hours=-4))
+
+
+def _et_day(iso: str | None) -> str | None:
+    """ISO timestamp → YYYY-MM-DD in US Eastern (the matchday boundary)."""
+    if not iso:
+        return None
+    try:
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt.astimezone(_ET).date().isoformat()
+
 
 BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world"
 # Standings live under the v2 core path, not the site path.
@@ -77,23 +94,51 @@ def _parse_event(ev: dict[str, Any]) -> dict[str, Any]:
 
 
 async def scoreboard() -> dict[str, Any]:
-    """Today's matches (live + scheduled + finished). Cached 20s so live
-    polling is fresh without hammering ESPN."""
+    """Today's + tomorrow's matches, grouped by US-Eastern matchday. ESPN's
+    default scoreboard rolls forward to whatever it deems the current slate (so
+    it skips today's finished games), so we request an explicit [today,
+    tomorrow] range instead. Cached 20s so live polling stays fresh."""
 
     async def fetch() -> dict[str, Any]:
+        now = datetime.now(_ET)
+        today = now.date()
+        tomorrow = today + timedelta(days=1)
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-            r = await client.get(f"{BASE}/scoreboard")
+            r = await client.get(
+                f"{BASE}/scoreboard",
+                params={"dates": f"{today:%Y%m%d}-{tomorrow:%Y%m%d}"},
+            )
             r.raise_for_status()
             body = r.json() or {}
         events = [_parse_event(e) for e in (body.get("events") or [])]
         # Live first, then scheduled (by kickoff), then finished.
         order = {"in": 0, "pre": 1, "post": 2}
         events.sort(key=lambda e: (order.get(e.get("state"), 3), e.get("date") or ""))
+
+        # Group into day buckets (preserving the live-first order within a day).
+        today_s, tomorrow_s = today.isoformat(), tomorrow.isoformat()
+        by_day: dict[str, list[dict[str, Any]]] = {}
+        for e in events:
+            by_day.setdefault(_et_day(e.get("date")) or today_s, []).append(e)
+        days = []
+        for d in sorted(by_day):
+            if d == today_s:
+                label = "Today"
+            elif d == tomorrow_s:
+                label = "Tomorrow"
+            else:
+                try:
+                    label = datetime.fromisoformat(d).strftime("%a %b %d")
+                except ValueError:
+                    label = d
+            days.append({"date": d, "label": label, "events": by_day[d]})
+
         league = (body.get("leagues") or [{}])[0]
         return {
             "season": league.get("season", {}).get("displayName") or league.get("name"),
             "events": events,
             "live_count": sum(1 for e in events if e.get("state") == "in"),
+            "days": days,
         }
 
     return await cache.aget_or_set("worldcup:scoreboard", fetch, ttl_seconds=20)
