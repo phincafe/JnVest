@@ -149,11 +149,20 @@ export type EarningsEvent = {
   eps_actual: number | null;
 };
 
+export type WitchingDay = {
+  date: string; // YYYY-MM-DD (3rd Friday of Mar/Jun/Sep/Dec)
+  days_until: number;
+  soon: boolean; // within the 1-week reminder window
+  quarter: string; // "Q1".."Q4"
+};
+
 export type CalendarResponse = {
   econ: EconEvent[];
   earnings: EarningsEvent[];
   econ_warning: string | null;
   earnings_warning: string | null;
+  /** Upcoming quadruple-witching days (deterministic, no feed). */
+  witching?: WitchingDay[];
 };
 
 export type ConfirmedIpo = {
