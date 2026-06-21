@@ -5,6 +5,7 @@ import {
   ExternalLink,
   Rocket,
   Sparkles,
+  Zap,
 } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type {
@@ -15,6 +16,7 @@ import type {
   IpoCalendarResponse,
   IpoFilingStatus,
   RumoredIpo,
+  WitchingDay,
 } from "../api/types";
 import { Skeleton } from "./Skeleton";
 
@@ -96,6 +98,9 @@ export function Calendar({ refreshNonce }: { refreshNonce: number }) {
           {err}
         </div>
       )}
+      {/* Quadruple-witching reminder — quiet normally, prominent inside the
+          1-week window (and fires a one-time browser notification then). */}
+      <WitchingReminder witching={data?.witching} />
       {/* IPOs above the econ/earnings grid — the SpaceX-class events are
           the headline reason most users open the Calendar tab. */}
       <IpoSection refreshNonce={refreshNonce} />
@@ -104,6 +109,86 @@ export function Calendar({ refreshNonce }: { refreshNonce: number }) {
         <EarningsCard data={data} />
       </div>
     </section>
+  );
+}
+
+function fmtWitchDate(iso: string): string {
+  try {
+    return new Date(iso + "T00:00:00").toLocaleDateString(undefined, {
+      weekday: "long",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function WitchingReminder({ witching }: { witching?: WitchingDay[] }) {
+  const next = witching?.[0];
+  const date = next?.date;
+  const soon = next?.soon ?? false;
+  const daysUntil = next?.days_until ?? 0;
+
+  // Fire a one-time browser notification inside the reminder window — only if
+  // the user already granted permission (for price alerts). Deduped per date.
+  useEffect(() => {
+    if (!date || !soon) return;
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") {
+      return;
+    }
+    const key = `jnv:witch-notified:${date}`;
+    if (localStorage.getItem(key)) return;
+    try {
+      new Notification("Quadruple witching ahead", {
+        body: `${daysUntil === 0 ? "Today" : `In ${daysUntil} day${daysUntil === 1 ? "" : "s"}`} (${fmtWitchDate(date)}) — expect elevated volume & volatility into the close.`,
+        tag: key,
+      });
+      localStorage.setItem(key, "1");
+    } catch {
+      /* notifications are best-effort */
+    }
+  }, [date, soon, daysUntil]);
+
+  if (!next) return null;
+  const countdown = next.days_until === 0 ? "Today" : `in ${next.days_until}d`;
+  return (
+    <div
+      className={`rounded-xl border p-3 ${
+        soon
+          ? "border-yellow-500/50 bg-yellow-500/10"
+          : "border-(--color-border) bg-(--color-panel)"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Zap
+            size={14}
+            className={soon ? "text-yellow-300" : "text-(--color-text-dim)"}
+          />
+          <span className="text-sm font-semibold">Quadruple witching</span>
+          {soon && (
+            <span className="rounded bg-yellow-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-yellow-200">
+              This week
+            </span>
+          )}
+        </div>
+        <span
+          className={`rounded px-2 py-0.5 text-xs font-semibold tabular-nums ${
+            soon
+              ? "bg-yellow-500/20 text-yellow-200"
+              : "bg-(--color-panel-2) text-(--color-text-dim)"
+          }`}
+        >
+          {countdown}
+        </span>
+      </div>
+      <p className="mt-1 text-xs text-(--color-text-dim)">
+        {fmtWitchDate(next.date)} ({next.quarter}) — index futures &amp; options,
+        stock options, and single-stock futures expire together. Expect elevated
+        volume and volatility, especially into the 4 PM ET close.
+      </p>
+    </div>
   );
 }
 

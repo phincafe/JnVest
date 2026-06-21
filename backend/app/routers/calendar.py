@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -10,6 +10,41 @@ from ..services import finnhub
 from ..services.errors import provider_error
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
+
+
+def _third_friday(year: int, month: int) -> date:
+    """Third Friday of a month — the monthly options-expiration / witching day."""
+    first = date(year, month, 1)
+    # weekday(): Mon=0 … Fri=4. Days from the 1st to the first Friday, then +2 weeks.
+    return first + timedelta(days=(4 - first.weekday()) % 7 + 14)
+
+
+def _quad_witching(today: date, count: int = 4) -> list[dict[str, Any]]:
+    """Upcoming quadruple-witching days: the 3rd Friday of Mar/Jun/Sep/Dec, when
+    index futures, index options, stock options, and single-stock futures all
+    expire together — historically the highest-volume sessions of the quarter.
+    Pure date math (no external feed). `soon` flags the 1-week reminder window."""
+    quarters = {3: "Q1", 6: "Q2", 9: "Q3", 12: "Q4"}
+    out: list[dict[str, Any]] = []
+    year = today.year
+    while len(out) < count:
+        for m in (3, 6, 9, 12):
+            wd = _third_friday(year, m)
+            if wd < today:
+                continue
+            days = (wd - today).days
+            out.append(
+                {
+                    "date": wd.isoformat(),
+                    "days_until": days,
+                    "soon": days <= 7,
+                    "quarter": quarters[m],
+                }
+            )
+            if len(out) >= count:
+                break
+        year += 1
+    return out
 
 
 def _impact_label(raw: str | None) -> str:
@@ -102,6 +137,8 @@ async def today(db: Session = Depends(get_db)) -> dict[str, Any]:
         "earnings": earnings,
         "econ_warning": econ_warning,
         "earnings_warning": earnings_warning,
+        # Deterministic, no external feed — the next few quadruple-witching days.
+        "witching": _quad_witching(datetime.utcnow().date()),
     }
 
 
