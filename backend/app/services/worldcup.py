@@ -17,20 +17,21 @@ import httpx
 
 from . import cache, oddsapi
 
-# US Eastern across the whole 2026 WC window (Jun 11 – Jul 19, all EDT = UTC-4).
-# A fixed offset matches how ESPN buckets match "dates" and avoids a tzdata dep.
-_ET = timezone(timedelta(hours=-4))
+# US Pacific across the whole 2026 WC window (Jun 11 – Jul 19, all PDT = UTC-7).
+# The owner is on the West Coast, so "today/tomorrow" rolls at Pacific midnight.
+# Fixed offset → no tzdata dependency.
+_PT = timezone(timedelta(hours=-7))
 
 
-def _et_day(iso: str | None) -> str | None:
-    """ISO timestamp → YYYY-MM-DD in US Eastern (the matchday boundary)."""
+def _pt_day(iso: str | None) -> str | None:
+    """ISO timestamp → YYYY-MM-DD in US Pacific (the matchday boundary)."""
     if not iso:
         return None
     try:
         dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
     except ValueError:
         return None
-    return dt.astimezone(_ET).date().isoformat()
+    return dt.astimezone(_PT).date().isoformat()
 
 
 BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world"
@@ -94,19 +95,19 @@ def _parse_event(ev: dict[str, Any]) -> dict[str, Any]:
 
 
 async def scoreboard() -> dict[str, Any]:
-    """Today's + tomorrow's matches, grouped by US-Eastern matchday. ESPN's
-    default scoreboard rolls forward to whatever it deems the current slate (so
-    it skips today's finished games), so we request an explicit [today,
-    tomorrow] range instead. Cached 20s so live polling stays fresh."""
+    """Yesterday's, today's, and tomorrow's matches, grouped by US-Pacific
+    matchday (the owner's timezone). ESPN's default scoreboard rolls forward to
+    whatever it deems the current slate, so we request an explicit
+    [yesterday, tomorrow] range and bucket by Pacific day. Cached 20s."""
 
     async def fetch() -> dict[str, Any]:
-        now = datetime.now(_ET)
-        today = now.date()
+        today = datetime.now(_PT).date()
+        yesterday = today - timedelta(days=1)
         tomorrow = today + timedelta(days=1)
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
             r = await client.get(
                 f"{BASE}/scoreboard",
-                params={"dates": f"{today:%Y%m%d}-{tomorrow:%Y%m%d}"},
+                params={"dates": f"{yesterday:%Y%m%d}-{tomorrow:%Y%m%d}"},
             )
             r.raise_for_status()
             body = r.json() or {}
@@ -115,29 +116,25 @@ async def scoreboard() -> dict[str, Any]:
         order = {"in": 0, "pre": 1, "post": 2}
         events.sort(key=lambda e: (order.get(e.get("state"), 3), e.get("date") or ""))
 
-        # Group into day buckets (preserving the live-first order within a day).
-        today_s, tomorrow_s = today.isoformat(), tomorrow.isoformat()
+        # Keep only yesterday / today / tomorrow (Pacific), grouped + labeled.
+        labels = {
+            yesterday.isoformat(): "Yesterday",
+            today.isoformat(): "Today",
+            tomorrow.isoformat(): "Tomorrow",
+        }
         by_day: dict[str, list[dict[str, Any]]] = {}
         for e in events:
-            by_day.setdefault(_et_day(e.get("date")) or today_s, []).append(e)
-        days = []
-        for d in sorted(by_day):
-            if d == today_s:
-                label = "Today"
-            elif d == tomorrow_s:
-                label = "Tomorrow"
-            else:
-                try:
-                    label = datetime.fromisoformat(d).strftime("%a %b %d")
-                except ValueError:
-                    label = d
-            days.append({"date": d, "label": label, "events": by_day[d]})
+            d = _pt_day(e.get("date"))
+            if d in labels:
+                by_day.setdefault(d, []).append(e)
+        days = [{"date": d, "label": labels[d], "events": by_day[d]} for d in sorted(by_day)]
+        kept = [e for grp in days for e in grp["events"]]
 
         league = (body.get("leagues") or [{}])[0]
         return {
             "season": league.get("season", {}).get("displayName") or league.get("name"),
-            "events": events,
-            "live_count": sum(1 for e in events if e.get("state") == "in"),
+            "events": kept,
+            "live_count": sum(1 for e in kept if e.get("state") == "in"),
             "days": days,
         }
 
