@@ -85,7 +85,7 @@ export default function WorldCupTab({ refreshNonce }: { refreshNonce: number }) 
       <section className="space-y-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-sm font-medium text-(--color-text-dim)">
-            Fixtures · today &amp; tomorrow
+            Fixtures · yesterday → tomorrow
           </h2>
           <UpdatedAgo fetchedAt={sb.fetchedAt} />
         </div>
@@ -98,7 +98,7 @@ export default function WorldCupTab({ refreshNonce }: { refreshNonce: number }) 
           </p>
         ) : sb.data.events.length === 0 ? (
           <p className="rounded-md border border-(--color-border) bg-(--color-panel) p-4 text-sm text-(--color-text-dim)">
-            No matches today or tomorrow. Group stage runs through 27 June; check
+            No matches in this window. Group stage runs through 27 June; check
             back on a match day.
           </p>
         ) : (
