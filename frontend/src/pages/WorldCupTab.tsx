@@ -6,6 +6,7 @@ import type {
   WcEvent,
   WcGroup,
   WcScoreboard,
+  WcScoreboardDay,
   WcStandings,
   WcStandingRow,
 } from "../api/types";
@@ -102,36 +103,50 @@ export default function WorldCupTab({ refreshNonce }: { refreshNonce: number }) 
             back on a match day.
           </p>
         ) : (
-          <div className="space-y-4">
-            {(
+          (() => {
+            const days = (
               sb.data.days ?? [
                 { date: "all", label: "Matches", events: sb.data.events },
               ]
-            )
-              .filter((d) => d.events.length > 0)
-              .map((day) => (
-                <div key={day.date} className="space-y-2">
-                  <div className="flex items-baseline gap-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide">
+            ).filter((d) => d.events.length > 0);
+            // Today (live first) and Tomorrow on top, expanded; past days collapsed.
+            const rank: Record<string, number> = { Today: 0, Tomorrow: 1 };
+            const current = days
+              .filter((d) => d.label !== "Yesterday")
+              .sort((a, b) => (rank[a.label] ?? 2) - (rank[b.label] ?? 2));
+            const past = days.filter((d) => d.label === "Yesterday");
+            return (
+              <div className="space-y-4">
+                {current.map((day) => (
+                  <DaySection key={day.date} day={day} onOpen={setOpenMatchId} />
+                ))}
+                {past.map((day) => (
+                  <details
+                    key={day.date}
+                    className="overflow-hidden rounded-lg border border-(--color-border) bg-(--color-panel-2)/30"
+                  >
+                    <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-(--color-text-dim) marker:content-none">
                       {day.label}
-                    </h3>
-                    <span className="text-[10px] text-(--color-text-dim)">
-                      {day.events.length}{" "}
-                      {day.events.length === 1 ? "match" : "matches"}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {day.events.map((e) => (
-                      <MatchCard
-                        key={e.id}
-                        ev={e}
-                        onOpen={() => e.id && setOpenMatchId(e.id)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
-          </div>
+                      <span className="text-[10px] font-normal normal-case text-(--color-text-dim)">
+                        {day.events.length}{" "}
+                        {day.events.length === 1 ? "match" : "matches"}
+                      </span>
+                      <span className="ml-auto text-(--color-text-dim)">▾</span>
+                    </summary>
+                    <div className="grid grid-cols-1 gap-3 px-3 pb-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {day.events.map((e) => (
+                        <MatchCard
+                          key={e.id}
+                          ev={e}
+                          onOpen={() => e.id && setOpenMatchId(e.id)}
+                        />
+                      ))}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            );
+          })()
         )}
         <p className="text-[10px] text-(--color-text-dim)/70">
           Live scores update every ~30s (polled, not instant). Data: ESPN.
@@ -187,6 +202,32 @@ function statusBadge(ev: WcEvent) {
     <span className="rounded bg-(--color-panel-2) px-1.5 py-0.5 text-[10px] font-medium text-(--color-text-dim)">
       {t || "Scheduled"}
     </span>
+  );
+}
+
+function DaySection({
+  day,
+  onOpen,
+}: {
+  day: WcScoreboardDay;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline gap-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide">
+          {day.label}
+        </h3>
+        <span className="text-[10px] text-(--color-text-dim)">
+          {day.events.length} {day.events.length === 1 ? "match" : "matches"}
+        </span>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {day.events.map((e) => (
+          <MatchCard key={e.id} ev={e} onOpen={() => e.id && onOpen(e.id)} />
+        ))}
+      </div>
+    </div>
   );
 }
 
