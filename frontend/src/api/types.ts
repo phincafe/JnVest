@@ -748,6 +748,26 @@ export type WcLineup = {
   subs_in?: { name?: string | null; pos?: string | null }[];
 };
 
+/** A team's aggregated 2026 World Cup form (per-game where noted). */
+export type WcTeamStats = {
+  matches: number;
+  record: string; // "W-D-L"
+  gf: number | null;
+  ga: number | null;
+  gf_pg: number | null;
+  ga_pg: number | null;
+  xg_pg: number | null;
+  xga_pg: number | null;
+  shots_pg: number | null;
+  sot_pg: number | null;
+  corners_pg: number | null;
+  corners_against_pg: number | null;
+  possession: number | null;
+  yellow: number;
+  red: number;
+  clean_sheets: number;
+};
+
 export type WcMatchSide = {
   id: string | null;
   name: string | null;
@@ -759,6 +779,8 @@ export type WcMatchSide = {
   group_pos?: WcGroupPos | null;
   /** Formation + starting XI, once team news is published. */
   lineup?: WcLineup | null;
+  /** Aggregated tournament form (record, goals, corners, shots, xG, cards). */
+  tournament?: WcTeamStats | null;
 };
 
 export type WcWeather = {
