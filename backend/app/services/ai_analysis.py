@@ -265,6 +265,29 @@ def _build_context(detail: dict[str, Any]) -> str:
             f"wind {wx.get('wind_kmh')} km/h{hot}"
         )
 
+    # Aggregated tournament form per side (their 2026 WC run so far).
+    for label, side in (("Home", home), ("Away", away)):
+        tf = (side or {}).get("tournament") or {}
+        if not tf.get("matches"):
+            continue
+        bits = [f"{tf.get('matches')} played ({tf.get('record')})"]
+        if tf.get("gf") is not None:
+            bits.append(f"{tf['gf']} GF / {tf.get('ga')} GA")
+        if tf.get("gf_pg") is not None:
+            bits.append(f"{tf['gf_pg']}/{tf.get('ga_pg')} goals pg")
+        if tf.get("xg_pg") is not None:
+            bits.append(f"xG {tf['xg_pg']} / xGA {tf.get('xga_pg')} pg")
+        if tf.get("shots_pg") is not None:
+            bits.append(f"{tf['shots_pg']} shots ({tf.get('sot_pg')} on target) pg")
+        if tf.get("corners_pg") is not None:
+            bits.append(f"{tf['corners_pg']} corners pg")
+        if tf.get("possession") is not None:
+            bits.append(f"{tf['possession']}% possession")
+        if tf.get("clean_sheets") is not None:
+            bits.append(f"{tf['clean_sheets']} clean sheets")
+        bits.append(f"{tf.get('yellow', 0)}Y/{tf.get('red', 0)}R")
+        lines.append(f"{label} tournament form: " + ", ".join(bits))
+
     # Formation + starting XI per side (subbed-off starters flagged [off]).
     for label, side in (("Home", home), ("Away", away)):
         lu = (side or {}).get("lineup") or {}

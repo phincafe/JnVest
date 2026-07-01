@@ -11,6 +11,7 @@ import type {
   WcMatchSide,
   WcMatchStat,
   WcTeamBrief,
+  WcTeamStats,
 } from "../api/types";
 import { peekCache, useCachedFetch } from "../hooks/useCachedFetch";
 import { Skeleton } from "./Skeleton";
@@ -201,6 +202,9 @@ export function WorldCupMatchModal({
                 )}
               </div>
             )}
+
+            {/* Tournament form — each team's 2026 WC run (betting context) */}
+            <TournamentForm home={data.home} away={data.away} />
 
             {/* Team stats */}
             {data.stats && data.stats.length > 0 && (
@@ -682,6 +686,99 @@ function TeamBrief({ name, brief }: { name: string; brief?: WcTeamBrief }) {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/** Side-by-side tournament form for both teams — record, goals, corners, shots,
+ * xG, cards across their 2026 World Cup matches. The better value per row is
+ * bolded green so it's scannable for betting. */
+type FormRowData = {
+  label: string;
+  hv: number | string | null;
+  av: number | string | null;
+  better?: "high" | "low";
+};
+
+function TournamentForm({
+  home,
+  away,
+}: {
+  home?: WcMatchSide | null;
+  away?: WcMatchSide | null;
+}) {
+  const h = home?.tournament;
+  const a = away?.tournament;
+  if (!h && !a) return null;
+  const cards = (t?: WcTeamStats | null) =>
+    t ? `${t.yellow}Y ${t.red}R` : null;
+  const rows: FormRowData[] = [
+    { label: "Played", hv: h?.matches ?? null, av: a?.matches ?? null },
+    { label: "Record (W-D-L)", hv: h?.record ?? null, av: a?.record ?? null },
+    { label: "Goals for", hv: h?.gf ?? null, av: a?.gf ?? null, better: "high" },
+    { label: "Goals against", hv: h?.ga ?? null, av: a?.ga ?? null, better: "low" },
+    { label: "xG / game", hv: h?.xg_pg ?? null, av: a?.xg_pg ?? null, better: "high" },
+    { label: "xGA / game", hv: h?.xga_pg ?? null, av: a?.xga_pg ?? null, better: "low" },
+    { label: "Shots / game", hv: h?.shots_pg ?? null, av: a?.shots_pg ?? null, better: "high" },
+    { label: "On target / game", hv: h?.sot_pg ?? null, av: a?.sot_pg ?? null, better: "high" },
+    { label: "Corners / game", hv: h?.corners_pg ?? null, av: a?.corners_pg ?? null, better: "high" },
+    { label: "Possession %", hv: h?.possession ?? null, av: a?.possession ?? null, better: "high" },
+    { label: "Clean sheets", hv: h?.clean_sheets ?? null, av: a?.clean_sheets ?? null, better: "high" },
+    { label: "Cards (Y/R)", hv: cards(h), av: cards(a) },
+  ];
+  return (
+    <div className="mt-4 rounded-lg border border-(--color-border) bg-(--color-panel-2)/40 p-3">
+      <div className="mb-2 grid grid-cols-3 items-center text-[10px] uppercase tracking-wide text-(--color-text-dim)">
+        <span className="text-left font-semibold text-(--color-text)">
+          {home?.abbr ?? "Home"}
+        </span>
+        <span className="text-center">This World Cup</span>
+        <span className="text-right font-semibold text-(--color-text)">
+          {away?.abbr ?? "Away"}
+        </span>
+      </div>
+      <div className="space-y-0.5">
+        {rows.map((r) => (
+          <FormRow key={r.label} row={r} />
+        ))}
+      </div>
+      <p className="mt-2 text-center text-[9px] text-(--color-text-dim)/60">
+        Totals + per-game averages across each team's 2026 WC matches. Data: ESPN.
+      </p>
+    </div>
+  );
+}
+
+function FormRow({ row }: { row: FormRowData }) {
+  const hs = row.hv == null ? "—" : String(row.hv);
+  const as = row.av == null ? "—" : String(row.av);
+  let homeBetter = false;
+  let awayBetter = false;
+  if (
+    row.better &&
+    typeof row.hv === "number" &&
+    typeof row.av === "number" &&
+    row.hv !== row.av
+  ) {
+    const hb = row.better === "high" ? row.hv > row.av : row.hv < row.av;
+    homeBetter = hb;
+    awayBetter = !hb;
+  }
+  return (
+    <div className="grid grid-cols-3 items-center gap-2 text-xs">
+      <span
+        className={`text-left tabular-nums ${homeBetter ? "font-semibold text-(--color-up)" : ""}`}
+      >
+        {hs}
+      </span>
+      <span className="text-center text-[10px] text-(--color-text-dim)">
+        {row.label}
+      </span>
+      <span
+        className={`text-right tabular-nums ${awayBetter ? "font-semibold text-(--color-up)" : ""}`}
+      >
+        {as}
+      </span>
     </div>
   );
 }

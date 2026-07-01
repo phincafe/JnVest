@@ -10,6 +10,7 @@ standings longer (they only change at full-time). Parsing is defensive —
 ESPN's shapes drift, and a missing field must degrade to None, never 500.
 """
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -602,6 +603,71 @@ def _key_events(summary: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+# ODDS_CORE already ends in ".../leagues/fifa.world".
+_TEAM_STATS_URL = ODDS_CORE + "/seasons/2026/types/1/teams/{tid}/statistics"
+
+
+async def _team_stats(team_id: str | None) -> dict[str, Any] | None:
+    """A team's aggregated 2026 World Cup stats (record, goals, corners, shots,
+    xG, cards, clean sheets) from ESPN's core season-statistics feed — the
+    tournament form a bettor wants. Cached 10 min (only moves at full-time).
+    Returns None if unavailable so the modal degrades gracefully."""
+    if not team_id:
+        return None
+
+    async def fetch() -> dict[str, Any] | None:
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+                r = await client.get(_TEAM_STATS_URL.format(tid=team_id))
+                r.raise_for_status()
+                cats = ((r.json() or {}).get("splits") or {}).get("categories") or []
+        except Exception:
+            return None
+        vals: dict[str, Any] = {}
+        for c in cats:
+            for st in c.get("stats") or []:
+                n = st.get("name")
+                if n is not None:
+                    vals[n] = st.get("value")
+        mp = vals.get("appearances")
+        if not mp:
+            return None
+        mp = int(mp)
+
+        def pg(name: str) -> float | None:  # per-game
+            v = vals.get(name)
+            return round(v / mp, 1) if isinstance(v, (int, float)) and mp else None
+
+        def iv(name: str) -> int | None:  # int value
+            v = vals.get(name)
+            return int(round(v)) if isinstance(v, (int, float)) else None
+
+        def r2(name: str) -> float | None:  # 2-decimal value
+            v = vals.get(name)
+            return round(v, 2) if isinstance(v, (int, float)) else None
+
+        return {
+            "matches": mp,
+            "record": f"{iv('wins') or 0}-{iv('draws') or 0}-{iv('losses') or 0}",
+            "gf": iv("totalGoals"),
+            "ga": iv("goalsConceded"),
+            "gf_pg": pg("totalGoals"),
+            "ga_pg": pg("goalsConceded"),
+            "xg_pg": r2("avgExpectedGoals"),
+            "xga_pg": r2("avgExpectedGoalsConceded"),
+            "shots_pg": pg("totalShots"),
+            "sot_pg": pg("shotsOnTarget"),
+            "corners_pg": pg("wonCorners"),
+            "corners_against_pg": pg("lostCorners"),
+            "possession": iv("possessionPct"),
+            "yellow": iv("yellowCards") or 0,
+            "red": iv("redCards") or 0,
+            "clean_sheets": iv("cleanSheet") or 0,
+        }
+
+    return await cache.aget_or_set(f"wc-teamstats:{team_id}", fetch, ttl_seconds=600)
+
+
 async def match(event_id: str) -> dict[str, Any]:
     """Full match detail: live team stats (corners, possession, shots, …),
     betting odds, and goal/card events. Cached 15s for live polling."""
@@ -682,6 +748,17 @@ async def match(event_id: str) -> dict[str, Any]:
             home["lineup"] = _lineup(rosters, "home")
         if away:
             away["lineup"] = _lineup(rosters, "away")
+
+        # Each side's aggregated tournament form (goals, corners, shots, xG,
+        # cards) — betting context. Fetched concurrently; cached 10 min each.
+        h_form, a_form = await asyncio.gather(
+            _team_stats((home or {}).get("id")),
+            _team_stats((away or {}).get("id")),
+        )
+        if home:
+            home["tournament"] = h_form
+        if away:
+            away["tournament"] = a_form
 
         return {
             "id": event_id,
