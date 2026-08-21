@@ -297,9 +297,8 @@ function RumoredIpoCard({ data }: { data: IpoCalendarResponse | null }) {
 }
 
 function RumoredIpoRow({ ipo }: { ipo: RumoredIpo }) {
-  // Open the most-actionable name (already-filed, top of sorted list) by
-  // default. SpaceX is currently at the top; this stays correct as the data
-  // shifts.
+  // Open the most-actionable names (already-filed, sorted to the top) by
+  // default. Data-driven, so this stays correct as names list and drop off.
   const [open, setOpen] = useState(ipo.filing_status === "filed");
   const age = staleDays(ipo.last_verified);
   return (
