@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, Briefcase, CalendarDays, LineChart, Sun, Trophy } from "lucide-react";
+import { Bot, Briefcase, CalendarDays, LineChart, Sun } from "lucide-react";
 import { api } from "./api/client";
 import type { AuthStatus, WatchlistTicker } from "./api/types";
 import { CommandPalette } from "./components/CommandPalette";
@@ -18,15 +18,15 @@ const WatchlistTab = lazyWithReload(() => import("./pages/WatchlistTab"));
 const PortfolioTab = lazyWithReload(() => import("./pages/PortfolioTab"));
 const CalendarTab = lazyWithReload(() => import("./pages/CalendarTab"));
 const BotTab = lazyWithReload(() => import("./pages/BotTab"));
-const WorldCupTab = lazyWithReload(() => import("./pages/WorldCupTab"));
 
 const BASE_TABS: TabDef[] = [
   { id: "morning", label: "Morning", icon: Sun },
   { id: "watchlist", label: "Watchlist", icon: LineChart },
   { id: "portfolio", label: "Portfolio", icon: Briefcase },
   { id: "calendar", label: "Calendar", icon: CalendarDays },
-  // Seasonal/fun: public World Cup data. Visible to everyone.
-  { id: "worldcup", label: "World Cup", icon: Trophy },
+  // World Cup tab archived after the 2026 tournament. pages/WorldCupTab.tsx and
+  // the /worldcup API routes are retained — to bring it back next tournament,
+  // restore the lazy import, this tab entry (Trophy icon), and the render block.
 ];
 // Owner-only: trading bot dashboard. Bot is a real-money-adjacent feature
 // (paper orders), so we hide the tab entirely from guests rather than
@@ -157,9 +157,6 @@ export function App() {
             />
           )}
           {active === "calendar" && <CalendarTab refreshNonce={refreshNonce} />}
-          {active === "worldcup" && (
-            <WorldCupTab refreshNonce={refreshNonce} />
-          )}
           {active === "bot" && role === "owner" && (
             <BotTab refreshNonce={refreshNonce} />
           )}
