@@ -157,23 +157,6 @@ async def today(db: Session = Depends(get_db)) -> dict[str, Any]:
 # calendar will pick it up, and live trading data lives in the main app.
 WATCHED_UPCOMING_IPOS: list[dict[str, Any]] = [
     {
-        "name": "SpaceX",
-        "sector": "Space / aerospace",
-        "filing_status": "filed",
-        "ticker": "SPCX",
-        "est_valuation_usd": "~$1.75T target",
-        "est_timing": "Listing ~June 12, 2026 (S-1 filed May 20, 2026)",
-        "why_it_matters": (
-            "Largest IPO in history if priced near the target. Sets the "
-            "public-market valuation anchor for the entire space economy. "
-            "S-1 disclosed 2025 revenue of $18.7B (Starlink: $11.4B) and a "
-            "$4.94B GAAP net loss. Goldman Sachs leading a 21-bank syndicate."
-        ),
-        "related_tickers": ["RKLB", "ASTS", "LUNR", "RDW", "BA"],
-        "source_url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001181412",
-        "last_verified": "2026-05-27",
-    },
-    {
         "name": "OpenAI",
         "sector": "AI labs",
         "filing_status": "confidential_filed",
@@ -188,7 +171,7 @@ WATCHED_UPCOMING_IPOS: list[dict[str, Any]] = [
         ),
         "related_tickers": ["MSFT", "NVDA", "AMD", "GOOGL", "AMZN"],
         "source_url": "https://fortune.com/2026/05/22/openai-ipo-filing-1-trillion-may-finally-answer-these-big-questions/",
-        "last_verified": "2026-05-27",
+        "last_verified": "2026-08-21",
     },
     {
         "name": "Discord",
@@ -204,7 +187,7 @@ WATCHED_UPCOMING_IPOS: list[dict[str, Any]] = [
         ),
         "related_tickers": ["RDDT", "META", "PINS"],
         "source_url": "https://cryptobriefing.com/discord-s-1-filing-boosts-ipo-prospects-before-2027/",
-        "last_verified": "2026-05-27",
+        "last_verified": "2026-08-21",
     },
     {
         "name": "Databricks",
@@ -220,7 +203,7 @@ WATCHED_UPCOMING_IPOS: list[dict[str, Any]] = [
         ),
         "related_tickers": ["SNOW", "MDB", "PLTR", "DDOG"],
         "source_url": "https://www.allied.vc/articles/databricks-ipo-expectations-key-dates-valuation-risks",
-        "last_verified": "2026-05-27",
+        "last_verified": "2026-08-21",
     },
     {
         "name": "Stripe",
@@ -237,7 +220,7 @@ WATCHED_UPCOMING_IPOS: list[dict[str, Any]] = [
         ),
         "related_tickers": ["PYPL", "SQ", "V", "MA", "ADYEY"],
         "source_url": "https://ipos.fyi/tracker/stripe-ipo",
-        "last_verified": "2026-05-27",
+        "last_verified": "2026-08-21",
     },
     {
         "name": "Anthropic",
@@ -253,7 +236,7 @@ WATCHED_UPCOMING_IPOS: list[dict[str, Any]] = [
         ),
         "related_tickers": ["GOOGL", "AMZN", "MSFT", "NVDA"],
         "source_url": "https://finance.yahoo.com/news/anthropic-plans-ipo-early-2026-004854547.html",
-        "last_verified": "2026-05-27",
+        "last_verified": "2026-08-21",
     },
 ]
 
